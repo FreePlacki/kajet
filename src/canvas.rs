@@ -1,11 +1,9 @@
 use std::ops::{Index, IndexMut};
 
-use crate::graphics::Point;
-
 pub struct Canvas {
     buffer: Vec<u32>,
-    width: u32,
-    height: u32,
+    pub width: u32,
+    pub height: u32,
 }
 
 impl Canvas {
@@ -17,12 +15,16 @@ impl Canvas {
         }
     }
 
-    pub fn in_bounds(&self, pos: Point) -> bool {
-        pos.x >= 0 && pos.x < self.width && pos.y >= 0 && pos.y < self.height
+    pub fn in_bounds(&self, pos: (i32, i32)) -> bool {
+        pos.0 >= 0 && pos.0 < self.width as i32 && pos.1 >= 0 && pos.1 < self.height as i32
     }
 
     pub fn get_buffer(&self) -> &[u32] {
         &self.buffer
+    }
+
+    pub fn clear(&mut self) {
+        self.buffer.iter_mut().for_each(|i| *i = 0);
     }
 }
 
@@ -39,17 +41,17 @@ impl IndexMut<usize> for Canvas {
     }
 }
 
-impl Index<Point> for Canvas {
+impl Index<(u32, u32)> for Canvas {
     type Output = u32;
-    fn index(&self, index: Point) -> &Self::Output {
-        let idx = index.y * self.width + index.x;
+    fn index(&self, index: (u32, u32)) -> &Self::Output {
+        let idx = index.1 * self.width + index.0;
         &self[idx as usize]
     }
 }
 
-impl IndexMut<Point> for Canvas {
-    fn index_mut(&mut self, index: Point) -> &mut Self::Output {
-        let idx = index.y * self.width + index.x;
+impl IndexMut<(u32, u32)> for Canvas {
+    fn index_mut(&mut self, index: (u32, u32)) -> &mut Self::Output {
+        let idx = index.1 * self.width + index.0;
         &mut self[idx as usize]
     }
 }
