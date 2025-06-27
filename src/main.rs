@@ -1,7 +1,7 @@
 use std::ops::Add;
 
 use canvas::Canvas;
-use minifb::{CursorStyle, Key, MouseButton, MouseMode, Window, WindowOptions};
+use minifb::{CursorStyle, Key, KeyRepeat, MouseButton, MouseMode, Window, WindowOptions};
 
 use crate::{
     camera::Camera,
@@ -42,12 +42,24 @@ fn main() {
             }
         }
 
+        for key in window.get_keys_pressed(KeyRepeat::Yes) {
+            let inc = 20.0;
+            match key {
+                Key::Left => camera.pos.x += inc,
+                Key::Right => camera.pos.x -= inc,
+                Key::Up => camera.pos.y += inc,
+                Key::Down => camera.pos.y -= inc,
+                _ => (),
+            }
+        }
+
+
         if let Some((scroll_x, scroll_y)) = window.get_scroll_wheel() {
             if window.is_key_down(Key::LeftCtrl) {
                 brush.thickness = brush.thickness.add(scroll_y.signum()).clamp(1.0, 30.0);
             } else {
+                // TODO: zoom in the direction of the mouse cursor
                 camera.zoom = camera.zoom.add(0.1 * scroll_y.signum()).clamp(0.1, 5.0);
-                dbg!(camera.zoom);
             }
         }
 
