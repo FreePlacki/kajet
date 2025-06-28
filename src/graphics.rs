@@ -1,4 +1,4 @@
-use std::ops::Add;
+use std::ops::{Add, Sub};
 
 use crate::{camera::Camera, canvas::Canvas};
 
@@ -24,9 +24,30 @@ impl Add<f32> for Point {
     }
 }
 
+impl Add<Point> for Point {
+    type Output = Self;
+    fn add(self, rhs: Point) -> Self::Output {
+        Self {
+            x: self.x + rhs.x,
+            y: self.y + rhs.y,
+        }
+    }
+}
+
+impl Sub<Point> for Point {
+    type Output = Self;
+    fn sub(self, rhs: Point) -> Self::Output {
+        Self {
+            x: self.x - rhs.x,
+            y: self.y - rhs.y,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub enum Event {
-    Draw(Point),
+    // TODO: make a MouseDown event with the brush
+    Draw(Point, Brush),
     MouseUp,
 }
 
