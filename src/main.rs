@@ -20,7 +20,16 @@ const HEIGHT: usize = 720;
 const FPS: usize = 60;
 
 fn main() {
-    let mut window = Window::new("Kajet", WIDTH, HEIGHT, WindowOptions::default()).unwrap();
+    let mut window = Window::new(
+        "Kajet",
+        WIDTH,
+        HEIGHT,
+        WindowOptions {
+            resize: true,
+            ..Default::default()
+        },
+    )
+    .unwrap();
     window.set_cursor_style(CursorStyle::Crosshair);
     window.set_target_fps(FPS);
 
@@ -34,6 +43,8 @@ fn main() {
     let mut events = Vec::<Event>::new();
 
     while window.is_open() && !window.is_key_down(Key::Escape) {
+        let resized = canvas.set_size(window.get_size());
+
         if let Some((x, y)) = window.get_mouse_pos(MouseMode::Discard) {
             let pos = camera.to_camera_coords((x as u32, y as u32));
 
@@ -82,7 +93,7 @@ fn main() {
         }
         let updated = camera.update();
 
-        if updated {
+        if updated || resized {
             let now = Instant::now();
             canvas.clear();
             for i in 1..events.len() {

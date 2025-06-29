@@ -28,6 +28,16 @@ impl Add<f32> for Point {
     }
 }
 
+impl Sub<f32> for Point {
+    type Output = Self;
+    fn sub(self, rhs: f32) -> Self::Output {
+        Self {
+            x: self.x - rhs,
+            y: self.y - rhs,
+        }
+    }
+}
+
 impl Add<Point> for Point {
     type Output = Self;
     fn add(self, rhs: Point) -> Self::Output {
@@ -73,13 +83,43 @@ impl Drawable for FilledRect {
         let (x_start, y_start) = camera.to_canvas_coords(self.pos);
         let (x_end, y_end) = camera.to_canvas_coords(self.pos + brush.thickness);
 
+        if !canvas.in_bounds((x_start, y_start)) && !canvas.in_bounds((x_end, y_end)) {
+            return;
+        }
+
         for y in y_start..y_end {
             for x in x_start..x_end {
                 let p = (x, y);
-                if !canvas.in_bounds(p) {
-                    continue;
+                if canvas.in_bounds(p) {
+                    canvas[(p.0 as u32, p.1 as u32)] = brush.color;
                 }
-                canvas[(p.0 as u32, p.1 as u32)] = brush.color;
+            }
+        }
+    }
+}
+
+pub struct FilledCircle {
+    pub pos: Point,
+}
+
+impl Drawable for FilledCircle {
+    fn draw(&self, canvas: &mut Canvas, camera: &Camera, brush: Brush) {
+        let r = brush.thickness / 2.0;
+        let (x_start, y_start) = camera.to_canvas_coords(self.pos - r);
+        let (x_end, y_end) = camera.to_canvas_coords(self.pos + r);
+
+        if !canvas.in_bounds((x_start, y_start)) && !canvas.in_bounds((x_end, y_end)) {
+            return;
+        }
+
+        for y in y_start..y_end {
+            for x in x_start..x_end {
+                let p = (x, y);
+                if canvas.in_bounds(p)
+                    && self.pos.dist(camera.to_camera_coords((x as u32, y as u32))) <= r
+                {
+                    canvas[(p.0 as u32, p.1 as u32)] = brush.color;
+                }
             }
         }
     }
@@ -120,18 +160,20 @@ impl Drawable for Line {
         let (x1, y1) = (self.end.x, self.end.y);
 
         let dx = (x1 - x0).abs() * z;
-        let sx = if x0 < x1 { 1.0 } else { -1.0 } * brush.thickness;
+        let sx = if x0 < x1 { 1.0 } else { -1.0 };
         let dy = -(y1 - y0).abs() * z;
-        let sy = if y0 < y1 { 1.0 } else { -1.0 } * brush.thickness;
+        let sy = if y0 < y1 { 1.0 } else { -1.0 };
         let mut err = dx + dy;
 
+        // TODO: this is not the correct way to draw a line with thickness
+        // consider: https://github.com/ArminJo/Arduino-BlueDisplay/blob/master/src/LocalGUI/ThickLine.hpp
         loop {
-            FilledRect {
+            FilledCircle {
                 pos: Point { x: x0, y: y0 },
             }
             .draw(canvas, camera, brush);
 
-            let tol = 1.0 * brush.thickness;
+            let tol = 1.0;
             if (x0 - x1).abs() <= tol && (y0 - y1).abs() <= tol {
                 break;
             }

@@ -26,6 +26,18 @@ impl Canvas {
     pub fn clear(&mut self) {
         self.buffer.iter_mut().for_each(|i| *i = 0);
     }
+
+    pub fn set_size(&mut self, size: (usize, usize)) -> bool {
+        if self.width == size.0 as u32 && self.height == size.1 as u32 {
+            return false;
+        }
+
+        self.width = size.0 as u32;
+        self.height = size.1 as u32;
+        self.buffer = vec![0; (self.width * self.height) as usize];
+
+        true
+    }
 }
 
 impl Index<usize> for Canvas {
