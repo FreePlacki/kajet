@@ -8,7 +8,7 @@ use minifb::{CursorStyle, Key, KeyRepeat, MouseButton, MouseMode, Window, Window
 
 use crate::{
     camera::Camera,
-    graphics::{Brush, Drawable, Event, Line},
+    graphics::{Brush, Drawable, Event, Line, Point},
 };
 
 mod camera;
@@ -35,6 +35,7 @@ fn main() {
 
     let mut i = 0;
     while window.is_open() && !window.is_key_down(Key::Escape) {
+        let now = Instant::now();
         if let Some((x, y)) = window.get_mouse_pos(MouseMode::Discard) {
             let pos = camera.to_camera_coords((x as u32, y as u32));
 
@@ -46,31 +47,29 @@ fn main() {
         }
 
         for key in window.get_keys_pressed(KeyRepeat::Yes) {
-            let inc = 20.0;
-            match key {
-                Key::Left => camera.pos.x -= inc,
-                Key::Right => camera.pos.x += inc,
-                Key::Up => camera.pos.y -= inc,
-                Key::Down => camera.pos.y += inc,
-                _ => (),
+            let inc = 40.0 / camera.zoom;
+            let delta = match key {
+                Key::Left => Some(Point::new(-inc, 0.0)),
+                Key::Right => Some(Point::new(inc, 0.0)),
+                Key::Up => Some(Point::new(0.0, -inc)),
+                Key::Down => Some(Point::new(0.0, inc)),
+                _ => None,
+            };
+            if let Some(delta) = delta {
+                camera.update_pos(camera.pos + delta);
             }
         }
 
         if let Some((_scroll_x, scroll_y)) = window.get_scroll_wheel() {
-            dbg!(camera.pos);
             if window.is_key_down(Key::LeftCtrl) {
                 brush.thickness = brush.thickness.add(scroll_y.signum()).clamp(1.0, 30.0);
             } else {
-                let prev_zoom = camera.zoom;
-                camera.zoom = camera.zoom.mul(1.0 + scroll_y / 10.0).clamp(0.1, 10.0);
-                if let Some((mouse_x, mouse_y)) = window.get_mouse_pos(MouseMode::Discard) {
-                    camera.pos.x -= mouse_x * (1.0 / camera.zoom - 1.0 / prev_zoom);
-                    camera.pos.y -= mouse_y * (1.0 / camera.zoom - 1.0 / prev_zoom);
-                }
+                let new_zoom = camera.zoom.mul(1.0 + scroll_y / 10.0).clamp(0.1, 10.0);
+                camera.update_zoom(new_zoom, window.get_mouse_pos(MouseMode::Discard));
             }
         }
+        camera.update();
 
-        let now = Instant::now();
         // TODO: only clear when zoom or pos changed
         canvas.clear();
         for i in 1..events.len() {
