@@ -35,17 +35,34 @@ impl Camera {
         self.pos_y_interp = Interpolator::new(self.pos.y, target.y);
     }
 
-    pub fn update(&mut self) {
-        self.pos.x += self.pos_x_interp.advance();
-        self.pos.y += self.pos_y_interp.advance();
+    pub fn update(&mut self) -> bool {
+        let mut updated = false;
+
+        if let Some(dx) = self.pos_x_interp.advance() {
+            self.pos.x += dx;
+            updated = true;
+        }
+        if let Some(dy) = self.pos_y_interp.advance() {
+            self.pos.y += dy;
+            updated = true;
+        }
 
         let prev_zoom = self.zoom;
-        self.zoom += self.zoom_interp.advance();
+        if let Some(dz) = self.zoom_interp.advance() {
+            self.zoom += dz;
+            updated = true;
+        }
+
+        if !updated {
+            return false;
+        }
 
         if let Some((mouse_x, mouse_y)) = self.mouse {
             self.pos.x -= mouse_x * (1.0 / self.zoom - 1.0 / prev_zoom);
             self.pos.y -= mouse_y * (1.0 / self.zoom - 1.0 / prev_zoom);
         }
+
+        true
     }
 }
 
@@ -79,16 +96,16 @@ impl Interpolator {
         }
     }
 
-    pub fn advance(&mut self) -> f32 {
+    pub fn advance(&mut self) -> Option<f32> {
         if self.is_increasing && self.current >= self.target
             || !self.is_increasing && self.current <= self.target
         {
             self.starting = self.target;
-            return 0.0;
+            return None;
         }
 
         let delta = (self.target - self.starting) * 2e-3 * FPS as f32;
         self.current += delta;
-        delta
+        Some(delta)
     }
 }

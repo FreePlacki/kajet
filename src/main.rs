@@ -33,14 +33,26 @@ fn main() {
 
     let mut events = Vec::<Event>::new();
 
-    let mut i = 0;
     while window.is_open() && !window.is_key_down(Key::Escape) {
-        let now = Instant::now();
         if let Some((x, y)) = window.get_mouse_pos(MouseMode::Discard) {
             let pos = camera.to_camera_coords((x as u32, y as u32));
 
             if window.get_mouse_down(MouseButton::Left) {
-                events.push(Event::Draw(pos, brush));
+                let mut push_new = true;
+                let mut push_double = true; // to render single dots we need two points
+                if let Some(Event::Draw(prev_pos, _)) = events.last() {
+                    if prev_pos.dist(pos) < 10.0 / camera.zoom {
+                        push_new = false;
+                    }
+                    push_double = false;
+                }
+
+                if push_new {
+                    events.push(Event::Draw(pos, brush));
+                }
+                if push_double {
+                    events.push(Event::Draw(pos, brush));
+                }
             } else if matches!(events.last(), Some(Event::Draw(_, _))) {
                 events.push(Event::MouseUp);
             }
@@ -68,20 +80,24 @@ fn main() {
                 camera.update_zoom(new_zoom, window.get_mouse_pos(MouseMode::Discard));
             }
         }
-        camera.update();
+        let updated = camera.update();
 
-        // TODO: only clear when zoom or pos changed
-        canvas.clear();
-        for i in 1..events.len() {
-            if let (Event::Draw(p0, b), Event::Draw(p1, _)) = (events[i - 1], events[i]) {
-                Line { start: p0, end: p1 }.draw(&mut canvas, &camera, b);
+        if updated {
+            let now = Instant::now();
+            canvas.clear();
+            for i in 1..events.len() {
+                if let (Event::Draw(p0, b), Event::Draw(p1, _)) = (events[i - 1], events[i]) {
+                    Line { start: p0, end: p1 }.draw(&mut canvas, &camera, b);
+                }
             }
-        }
-        i += 1;
-        if i == FPS {
-            i = 0;
             println!("Drawing time: {} ms", now.elapsed().as_millis());
             println!("Events count: {}", events.len());
+        } else if events.len() >= 2 {
+            if let (Event::Draw(p0, b), Event::Draw(p1, _)) =
+                (events[events.len() - 2], events[events.len() - 1])
+            {
+                Line { start: p0, end: p1 }.draw(&mut canvas, &camera, b);
+            }
         }
 
         window

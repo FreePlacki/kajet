@@ -12,6 +12,10 @@ impl Point {
     pub fn new(x: f32, y: f32) -> Self {
         Self { x, y }
     }
+
+    pub fn dist(&self, other: Point) -> f32 {
+        (self.x - other.x).powi(2) + (self.y - other.y).powi(2)
+    }
 }
 
 impl Add<f32> for Point {
@@ -46,7 +50,6 @@ impl Sub<Point> for Point {
 
 #[derive(Debug, Clone, Copy)]
 pub enum Event {
-    // TODO: make a MouseDown event with the brush
     Draw(Point, Brush),
     MouseUp,
 }
@@ -87,25 +90,48 @@ pub struct Line {
     pub end: Point,
 }
 
+impl Line {
+    fn can_be_in_bounds(&self, canvas: &Canvas, camera: &Camera, brush: Brush) -> bool {
+        let min_x = self.start.x.min(self.end.x);
+        let min_y = self.start.y.min(self.end.y);
+        let max_x = self.start.x.max(self.end.x);
+        let max_y = self.start.y.max(self.end.y);
+
+        let Point {
+            x: cam_max_x,
+            y: cam_max_y,
+        } = camera.to_camera_coords((canvas.width, canvas.height));
+
+        !(max_x + brush.thickness < camera.pos.x
+            || max_y + brush.thickness < camera.pos.y
+            || min_x - brush.thickness > cam_max_x
+            || min_y - brush.thickness > cam_max_y)
+    }
+}
+
 impl Drawable for Line {
     fn draw(&self, canvas: &mut Canvas, camera: &Camera, brush: Brush) {
+        if !self.can_be_in_bounds(canvas, camera, brush) {
+            return;
+        }
+
         let z = 1.0 / camera.zoom;
         let (mut x0, mut y0) = (self.start.x, self.start.y);
         let (x1, y1) = (self.end.x, self.end.y);
 
         let dx = (x1 - x0).abs() * z;
-        let sx = if x0 < x1 { 1.0 } else { -1.0 };
+        let sx = if x0 < x1 { 1.0 } else { -1.0 } * brush.thickness;
         let dy = -(y1 - y0).abs() * z;
-        let sy = if y0 < y1 { 1.0 } else { -1.0 };
+        let sy = if y0 < y1 { 1.0 } else { -1.0 } * brush.thickness;
         let mut err = dx + dy;
 
-        for _ in 0..1000 {
+        loop {
             FilledRect {
                 pos: Point { x: x0, y: y0 },
             }
             .draw(canvas, camera, brush);
 
-            let tol = 1.0;
+            let tol = 1.0 * brush.thickness;
             if (x0 - x1).abs() <= tol && (y0 - y1).abs() <= tol {
                 break;
             }
