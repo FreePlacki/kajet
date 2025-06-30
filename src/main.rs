@@ -5,25 +5,26 @@ use std::{
 
 use canvas::Canvas;
 use minifb::{CursorStyle, Key, KeyRepeat, MouseButton, MouseMode, Window, WindowOptions};
+use tiny_skia::Color;
 
 use crate::{
     camera::Camera,
-    graphics::{Brush, Drawable, Event, Line, Point},
+    graphics::{Brush, Drawable, Line, Point},
 };
 
 mod camera;
 mod canvas;
 mod graphics;
 
-const WIDTH: usize = 1280;
-const HEIGHT: usize = 720;
-const FPS: usize = 60;
+const WIDTH: u32 = 1280;
+const HEIGHT: u32 = 720;
+const FPS: u32 = 60;
 
 fn main() {
     let mut window = Window::new(
         "Kajet",
-        WIDTH,
-        HEIGHT,
+        WIDTH as usize,
+        HEIGHT as usize,
         WindowOptions {
             resize: true,
             ..Default::default()
@@ -31,41 +32,38 @@ fn main() {
     )
     .unwrap();
     window.set_cursor_style(CursorStyle::Crosshair);
-    window.set_target_fps(FPS);
+    window.set_target_fps(FPS as usize);
 
     let mut canvas = Canvas::new(WIDTH, HEIGHT);
     let mut camera = Camera::default();
     let mut brush = Brush {
-        color: 0x00ffffff,
+        color: Color::WHITE,
         thickness: 6.0,
     };
 
-    let mut events = Vec::<Event>::new();
+    let mut lines = Vec::<Line>::new();
 
     while window.is_open() && !window.is_key_down(Key::Escape) {
-        let resized = canvas.set_size(window.get_size());
+        let resized = {
+            let sz = window.get_size();
+            canvas.set_size((sz.0 as u32, sz.1 as u32))
+        };
 
         if let Some((x, y)) = window.get_mouse_pos(MouseMode::Discard) {
             let pos = camera.to_camera_coords((x as u32, y as u32));
 
             if window.get_mouse_down(MouseButton::Left) {
-                let mut push_new = true;
-                let mut push_double = true; // to render single dots we need two points
-                if let Some(Event::Draw(prev_pos, _)) = events.last() {
-                    if prev_pos.dist(pos) < 10.0 / camera.zoom {
-                        push_new = false;
+                if let Some(line) = lines.last_mut() {
+                    if line.finished {
+                        lines.push(Line::new(pos, brush));
+                    } else if line.points.last().unwrap().dist(pos) >= 5.0 {
+                        line.points.push(pos);
                     }
-                    push_double = false;
+                } else {
+                    lines.push(Line::new(pos, brush));
                 }
-
-                if push_new {
-                    events.push(Event::Draw(pos, brush));
-                }
-                if push_double {
-                    events.push(Event::Draw(pos, brush));
-                }
-            } else if matches!(events.last(), Some(Event::Draw(_, _))) {
-                events.push(Event::MouseUp);
+            } else if let Some(line) = lines.last_mut() {
+                line.finished = true;
             }
         }
 
@@ -92,28 +90,37 @@ fn main() {
             }
         }
         let updated = camera.update();
-
-        if updated || resized {
-            let now = Instant::now();
-            canvas.clear();
-            for i in 1..events.len() {
-                if let (Event::Draw(p0, b), Event::Draw(p1, _)) = (events[i - 1], events[i]) {
-                    Line { start: p0, end: p1 }.draw(&mut canvas, &camera, b);
-                }
-            }
-            println!("Drawing time: {} ms", now.elapsed().as_millis());
-            println!("Events count: {}", events.len());
-        } else if events.len() >= 2 {
-            if let (Event::Draw(p0, b), Event::Draw(p1, _)) =
-                (events[events.len() - 2], events[events.len() - 1])
-            {
-                Line { start: p0, end: p1 }.draw(&mut canvas, &camera, b);
-            }
+        let now = Instant::now();
+        canvas.clear();
+        for line in &lines {
+            line.draw(&mut canvas, &camera);
         }
+        dbg!(now.elapsed());
+        if let Some(l) = lines.first() {
+            dbg!(l.points.len());
+        }
+
+        // if updated || resized {
+        //     let now = Instant::now();
+        //     canvas.clear();
+        //     for i in 1..events.len() {
+        //         if let (Event::Draw(p0, b), Event::Draw(p1, _)) = (events[i - 1], events[i]) {
+        //             Line { start: p0, end: p1 }.draw(&mut canvas, &camera, b);
+        //         }
+        //     }
+        //     println!("Drawing time: {} ms", now.elapsed().as_millis());
+        //     println!("Events count: {}", events.len());
+        // } else if events.len() >= 2 {
+        //     if let (Event::Draw(p0, b), Event::Draw(p1, _)) =
+        //         (events[events.len() - 2], events[events.len() - 1])
+        //     {
+        //         Line { start: p0, end: p1 }.draw(&mut canvas, &camera, b);
+        //     }
+        // }
 
         window
             .update_with_buffer(
-                canvas.get_buffer(),
+                &canvas.get_buffer(),
                 canvas.width as usize,
                 canvas.height as usize,
             )
