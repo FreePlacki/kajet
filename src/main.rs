@@ -62,22 +62,17 @@ fn main() {
                 } else {
                     lines.push(Line::new(pos, brush));
                 }
-            } else if let Some(line) = lines.last_mut() {
-                line.finished = true;
-            }
-        }
-
-        for key in window.get_keys_pressed(KeyRepeat::Yes) {
-            let inc = 40.0 / camera.zoom;
-            let delta = match key {
-                Key::Left => Some(Point::from_xy(-inc, 0.0)),
-                Key::Right => Some(Point::from_xy(inc, 0.0)),
-                Key::Up => Some(Point::from_xy(0.0, -inc)),
-                Key::Down => Some(Point::from_xy(0.0, inc)),
-                _ => None,
-            };
-            if let Some(delta) = delta {
-                camera.update_pos(camera.pos + delta);
+            } else {
+                if let Some(line) = lines.last_mut() {
+                    line.finished = true;
+                }
+                if window.get_mouse_down(MouseButton::Right) {
+                    camera.update_pos(Point::from_xy(x, y));
+                    window.set_cursor_style(CursorStyle::ClosedHand);
+                } else {
+                    camera.end_panning();
+                    window.set_cursor_style(CursorStyle::Crosshair);
+                }
             }
         }
 
@@ -86,7 +81,10 @@ fn main() {
                 brush.thickness = brush.thickness.add(scroll_y.signum()).clamp(1.0, 30.0);
             } else {
                 let new_zoom = camera.zoom.mul(1.0 + scroll_y / 10.0).clamp(0.1, 10.0);
-                camera.update_zoom(new_zoom, window.get_mouse_pos(MouseMode::Discard));
+                let mouse = window
+                    .get_mouse_pos(MouseMode::Discard)
+                    .map(|m| Point::from_xy(m.0, m.1));
+                camera.update_zoom(new_zoom, mouse);
             }
         }
         let updated = camera.update();
@@ -105,7 +103,7 @@ fn main() {
                 l.points.push(line.points[line.points.len() - 1]);
                 l.draw(&mut canvas, &camera);
             }
-            println!("Partial draw: {:?}", now.elapsed());
+            // println!("Partial draw: {:?}", now.elapsed());
         }
 
         window
