@@ -90,33 +90,23 @@ fn main() {
             }
         }
         let updated = camera.update();
-        let now = Instant::now();
-        canvas.clear();
-        for line in &lines {
-            line.draw(&mut canvas, &camera);
-        }
-        dbg!(now.elapsed());
-        if let Some(l) = lines.first() {
-            dbg!(l.points.len());
-        }
 
-        // if updated || resized {
-        //     let now = Instant::now();
-        //     canvas.clear();
-        //     for i in 1..events.len() {
-        //         if let (Event::Draw(p0, b), Event::Draw(p1, _)) = (events[i - 1], events[i]) {
-        //             Line { start: p0, end: p1 }.draw(&mut canvas, &camera, b);
-        //         }
-        //     }
-        //     println!("Drawing time: {} ms", now.elapsed().as_millis());
-        //     println!("Events count: {}", events.len());
-        // } else if events.len() >= 2 {
-        //     if let (Event::Draw(p0, b), Event::Draw(p1, _)) =
-        //         (events[events.len() - 2], events[events.len() - 1])
-        //     {
-        //         Line { start: p0, end: p1 }.draw(&mut canvas, &camera, b);
-        //     }
-        // }
+        if updated || resized {
+            let now = Instant::now();
+            canvas.clear();
+            for line in &lines {
+                line.draw(&mut canvas, &camera);
+            }
+            println!("Full redraw: {:?}", now.elapsed());
+        } else if let Some(line) = lines.last() {
+            let now = Instant::now();
+            if line.points.len() >= 2 {
+                let mut l = Line::new(line.points[line.points.len() - 2], line.brush);
+                l.points.push(line.points[line.points.len() - 1]);
+                l.draw(&mut canvas, &camera);
+            }
+            println!("Partial draw: {:?}", now.elapsed());
+        }
 
         window
             .update_with_buffer(

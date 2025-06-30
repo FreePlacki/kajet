@@ -2,10 +2,7 @@ use std::ops::{Add, Sub};
 
 use tiny_skia::{Color, LineCap, LineJoin, Paint, PathBuilder, Stroke, Transform};
 
-use crate::{
-    camera::Camera,
-    canvas::{self, Canvas},
-};
+use crate::{camera::Camera, canvas::Canvas};
 
 #[derive(Debug, Clone, Copy)]
 pub struct Point {
@@ -115,79 +112,6 @@ impl Line {
             brush,
         }
     }
-    //
-    // const INSIDE: u8 = 0;
-    // const LEFT: u8 = 1 << 0;
-    // const RIGHT: u8 = 1 << 1;
-    // const BOTTOM: u8 = 1 << 2;
-    // const TOP: u8 = 1 << 3;
-    //
-    // fn compute_out_code(p: Point, bounds: (Point, Point)) -> u8 {
-    //     let (Point { x: xmin, y: ymin }, Point { x: xmax, y: ymax }) = bounds;
-    //     let mut code = Self::INSIDE;
-    //     if p.x < xmin {
-    //         code |= Self::LEFT;
-    //     } else if p.x > xmax {
-    //         code |= Self::RIGHT;
-    //     }
-    //     if p.y < ymin {
-    //         code |= Self::BOTTOM;
-    //     } else if p.y > ymax {
-    //         code |= Self::TOP;
-    //     }
-    //     code
-    // }
-    //
-    // fn cohen_sutherland_clip(
-    //     mut p0: Point,
-    //     mut p1: Point,
-    //     camera: &Camera,
-    //     canvas: &Canvas,
-    // ) -> Option<(Point, Point)> {
-    //     let bounds = camera.get_bounds(canvas);
-    //     let (Point { x: xmin, y: ymin }, Point { x: xmax, y: ymax }) = bounds;
-    //
-    //     let mut code0 = Self::compute_out_code(p0, bounds);
-    //     let mut code1 = Self::compute_out_code(p1, bounds);
-    //
-    //     loop {
-    //         if code0 == 0 && code1 == 0 {
-    //             // both inside -> no modification
-    //             return Some((p0, p1));
-    //         } else if code0 & code1 != 0 {
-    //             // share an outside zone -> trivial reject
-    //             return None;
-    //         } else {
-    //             // at least one endpoint is outside; pick it
-    //             let out_code = if code0 != 0 { code0 } else { code1 };
-    //             // find intersection
-    //             let (x, y) = if out_code & Self::TOP != 0 {
-    //                 let x = p0.x + (p1.x - p0.x) * (ymax - p0.y) / (p1.y - p0.y);
-    //                 (x, ymax)
-    //             } else if out_code & Self::BOTTOM != 0 {
-    //                 let x = p0.x + (p1.x - p0.x) * (ymin - p0.y) / (p1.y - p0.y);
-    //                 (x, ymin)
-    //             } else if out_code & Self::RIGHT != 0 {
-    //                 let y = p0.y + (p1.y - p0.y) * (xmax - p0.x) / (p1.x - p0.x);
-    //                 (xmax, y)
-    //             } else {
-    //                 // LEFT
-    //                 let y = p0.y + (p1.y - p0.y) * (xmin - p0.x) / (p1.x - p0.x);
-    //                 (xmin, y)
-    //             };
-    //             // replace outside point
-    //             if out_code == code0 {
-    //                 p0.x = x;
-    //                 p0.y = y;
-    //                 code0 = Self::compute_out_code(p0, bounds);
-    //             } else {
-    //                 p1.x = x;
-    //                 p1.y = y;
-    //                 code1 = Self::compute_out_code(p1, bounds);
-    //             }
-    //         }
-    //     }
-    // }
 }
 
 impl Drawable for Line {
@@ -200,10 +124,8 @@ impl Drawable for Line {
         for seg in self.points.windows(2) {
             let p0 = seg[0];
             let p1 = seg[1];
-            // if let Some((p0, p1)) = Self::cohen_sutherland_clip(p0, p1, camera, canvas) {
-                pb.move_to(p0.x, p0.y);
-                pb.line_to(p1.x, p1.y);
-            // }
+            pb.move_to(p0.x, p0.y);
+            pb.line_to(p1.x, p1.y);
         }
 
         let path = pb.finish().unwrap();
