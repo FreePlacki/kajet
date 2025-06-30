@@ -1,64 +1,6 @@
-use std::ops::{Add, Sub};
-
-use tiny_skia::{Color, LineCap, LineJoin, Paint, PathBuilder, Stroke, Transform};
+use tiny_skia::{Color, LineCap, LineJoin, Paint, PathBuilder, Point, Stroke, Transform};
 
 use crate::{camera::Camera, canvas::Canvas};
-
-#[derive(Debug, Clone, Copy)]
-pub struct Point {
-    pub x: f32,
-    pub y: f32,
-}
-
-impl Point {
-    pub fn new(x: f32, y: f32) -> Self {
-        Self { x, y }
-    }
-
-    pub fn dist(&self, other: Point) -> f32 {
-        (self.x - other.x).powi(2) + (self.y - other.y).powi(2)
-    }
-}
-
-impl Add<f32> for Point {
-    type Output = Self;
-    fn add(self, rhs: f32) -> Self::Output {
-        Self {
-            x: self.x + rhs,
-            y: self.y + rhs,
-        }
-    }
-}
-
-impl Sub<f32> for Point {
-    type Output = Self;
-    fn sub(self, rhs: f32) -> Self::Output {
-        Self {
-            x: self.x - rhs,
-            y: self.y - rhs,
-        }
-    }
-}
-
-impl Add<Point> for Point {
-    type Output = Self;
-    fn add(self, rhs: Point) -> Self::Output {
-        Self {
-            x: self.x + rhs.x,
-            y: self.y + rhs.y,
-        }
-    }
-}
-
-impl Sub<Point> for Point {
-    type Output = Self;
-    fn sub(self, rhs: Point) -> Self::Output {
-        Self {
-            x: self.x - rhs.x,
-            y: self.y - rhs.y,
-        }
-    }
-}
 
 #[derive(Debug, Clone, Copy)]
 pub struct Brush {

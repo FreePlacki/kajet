@@ -1,4 +1,6 @@
-use crate::{FPS, canvas::Canvas, graphics::Point};
+use tiny_skia::Point;
+
+use crate::{FPS, canvas::Canvas};
 
 pub struct Camera {
     pub pos: Point,
@@ -15,7 +17,7 @@ impl Camera {
         let w = canvas.width as f32 / self.zoom;
         let h = canvas.height as f32 / self.zoom;
 
-        (self.pos, self.pos + Point::new(w, h))
+        (self.pos, self.pos + Point::from_xy(w, h))
     }
 
     pub fn to_canvas_coords(&self, point: Point) -> (i32, i32) {
@@ -29,7 +31,7 @@ impl Camera {
         let x = point.0 as f32 / self.zoom + self.pos.x;
         let y = point.1 as f32 / self.zoom + self.pos.y;
 
-        Point::new(x, y)
+        Point::from_xy(x, y)
     }
 
     pub fn update_zoom(&mut self, target: f32, mouse: Option<(f32, f32)>) {
@@ -76,7 +78,7 @@ impl Camera {
 impl Default for Camera {
     fn default() -> Self {
         Self {
-            pos: Point::new(0.0, 0.0),
+            pos: Point::from_xy(0.0, 0.0),
             zoom: 1.0,
             zoom_interp: Interpolator::new(1.0, 1.0),
             pos_x_interp: Interpolator::new(0.0, 0.0),

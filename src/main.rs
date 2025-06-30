@@ -5,11 +5,11 @@ use std::{
 
 use canvas::Canvas;
 use minifb::{CursorStyle, Key, KeyRepeat, MouseButton, MouseMode, Window, WindowOptions};
-use tiny_skia::Color;
+use tiny_skia::{Color, Point};
 
 use crate::{
     camera::Camera,
-    graphics::{Brush, Drawable, Line, Point},
+    graphics::{Brush, Drawable, Line},
 };
 
 mod camera;
@@ -18,7 +18,7 @@ mod graphics;
 
 const WIDTH: u32 = 1280;
 const HEIGHT: u32 = 720;
-const FPS: u32 = 60;
+const FPS: u32 = 120;
 
 fn main() {
     let mut window = Window::new(
@@ -56,7 +56,7 @@ fn main() {
                 if let Some(line) = lines.last_mut() {
                     if line.finished {
                         lines.push(Line::new(pos, brush));
-                    } else if line.points.last().unwrap().dist(pos) >= 5.0 {
+                    } else if line.points.last().unwrap().distance(pos) >= 5.0 {
                         line.points.push(pos);
                     }
                 } else {
@@ -70,10 +70,10 @@ fn main() {
         for key in window.get_keys_pressed(KeyRepeat::Yes) {
             let inc = 40.0 / camera.zoom;
             let delta = match key {
-                Key::Left => Some(Point::new(-inc, 0.0)),
-                Key::Right => Some(Point::new(inc, 0.0)),
-                Key::Up => Some(Point::new(0.0, -inc)),
-                Key::Down => Some(Point::new(0.0, inc)),
+                Key::Left => Some(Point::from_xy(-inc, 0.0)),
+                Key::Right => Some(Point::from_xy(inc, 0.0)),
+                Key::Up => Some(Point::from_xy(0.0, -inc)),
+                Key::Down => Some(Point::from_xy(0.0, inc)),
                 _ => None,
             };
             if let Some(delta) = delta {
