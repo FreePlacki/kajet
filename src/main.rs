@@ -4,12 +4,12 @@ use std::{
 };
 
 use canvas::Canvas;
-use minifb::{CursorStyle, Key, KeyRepeat, MouseButton, MouseMode, Window, WindowOptions};
-use tiny_skia::{Color, Point};
+use minifb::{CursorStyle, Key, MouseButton, MouseMode, Window, WindowOptions};
+use tiny_skia::Point;
 
 use crate::{
     camera::Camera,
-    graphics::{Brush, Drawable, Line},
+    graphics::{Brush, Color, Drawable, FilledCircle, Line},
 };
 
 mod camera;
@@ -34,11 +34,11 @@ fn main() {
     window.set_cursor_style(CursorStyle::Crosshair);
     window.set_target_fps(FPS as usize);
 
-    let mut canvas = Canvas::new(WIDTH, HEIGHT);
+    let mut canvas = Canvas::new(WIDTH, HEIGHT, Color(0));
     let mut camera = Camera::default();
     let mut brush = Brush {
-        color: Color::WHITE,
-        thickness: 6.0,
+        color: Color::from_skia(tiny_skia::Color::WHITE),
+        thickness: 5.0,
     };
 
     let mut lines = Vec::<Line>::new();
@@ -48,15 +48,17 @@ fn main() {
             let sz = window.get_size();
             canvas.set_size((sz.0 as u32, sz.1 as u32))
         };
+        canvas.clear_overlay();
 
-        if let Some((x, y)) = window.get_mouse_pos(MouseMode::Discard) {
+        let mouse = window.get_mouse_pos(MouseMode::Discard);
+        if let Some((x, y)) = mouse {
             let pos = camera.to_camera_coords((x as u32, y as u32));
 
             if window.get_mouse_down(MouseButton::Left) {
                 if let Some(line) = lines.last_mut() {
                     if line.finished {
                         lines.push(Line::new(pos, brush));
-                    } else if line.points.last().unwrap().distance(pos) >= 5.0 {
+                    } else if line.points.last().unwrap().distance(pos) >= 5.0 / camera.zoom {
                         line.points.push(pos);
                     }
                 } else {
@@ -70,11 +72,24 @@ fn main() {
                     camera.update_pos(Point::from_xy(x, y));
                     window.set_cursor_style(CursorStyle::ClosedHand);
                 } else {
+                    FilledCircle {
+                        pos: Point::from_xy(x, y)
+                            + Point::from_xy(
+                                10.0 + brush.thickness * camera.zoom,
+                                -10.0 - brush.thickness * camera.zoom,
+                            ),
+                        brush: Brush {
+                            color: brush.color,
+                            thickness: brush.thickness * camera.zoom,
+                        },
+                    }
+                    .draw(&mut canvas, &camera);
                     camera.end_panning();
                     window.set_cursor_style(CursorStyle::Crosshair);
                 }
             }
         }
+        camera.update_mouse(mouse.map(|m| Point::from_xy(m.0, m.1)));
 
         if let Some((_scroll_x, scroll_y)) = window.get_scroll_wheel() {
             if window.is_key_down(Key::LeftCtrl) {
@@ -97,7 +112,7 @@ fn main() {
             }
             println!("Full redraw: {:?}", now.elapsed());
         } else if let Some(line) = lines.last() {
-            let now = Instant::now();
+            // let now = Instant::now();
             if line.points.len() >= 2 {
                 let mut l = Line::new(line.points[line.points.len() - 2], line.brush);
                 l.points.push(line.points[line.points.len() - 1]);

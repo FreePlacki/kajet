@@ -55,6 +55,10 @@ impl Camera {
         self.is_panning = true;
     }
 
+    pub fn update_mouse(&mut self, mouse: Option<Point>) {
+        self.mouse = mouse;
+    }
+
     pub fn end_panning(&mut self) {
         self.is_panning = false;
     }
@@ -126,8 +130,9 @@ impl Interpolator {
     }
 
     pub fn advance(&mut self) -> Option<f32> {
-        if self.is_increasing && self.current >= self.target
-            || !self.is_increasing && self.current <= self.target
+        let tol = 1e-3;
+        if self.is_increasing && self.current + tol >= self.target
+            || !self.is_increasing && self.current <= self.target + tol
         {
             self.starting = self.target;
             return None;

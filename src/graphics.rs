@@ -1,6 +1,30 @@
-use tiny_skia::{Color, LineCap, LineJoin, Paint, PathBuilder, Point, Stroke, Transform};
+use tiny_skia::{LineCap, LineJoin, Paint, PathBuilder, Point, Stroke, Transform};
 
 use crate::{camera::Camera, canvas::Canvas};
+
+#[derive(Debug, Clone, Copy)]
+pub struct Color(pub u32); // ARGB
+
+impl Color {
+    pub fn from_skia(color: tiny_skia::Color) -> Self {
+        let c = color.to_color_u8();
+        Self(u32::from_le_bytes([
+            c.alpha(),
+            c.red(),
+            c.green(),
+            c.blue(),
+        ]))
+    }
+
+    pub fn to_skia(self) -> tiny_skia::Color {
+        let bytes = self.0.to_be_bytes();
+        tiny_skia::Color::from_rgba8(bytes[1], bytes[2], bytes[3], bytes[0])
+    }
+
+    pub fn from_rgba(color: &[u8]) -> Self {
+        Self(u32::from_be_bytes([color[3], color[0], color[1], color[2]]))
+    }
+}
 
 #[derive(Debug, Clone, Copy)]
 pub struct Brush {
@@ -12,32 +36,39 @@ pub trait Drawable {
     fn draw(&self, canvas: &mut Canvas, camera: &Camera);
 }
 
-// pub struct FilledCircle {
-//     pub pos: Point,
-// }
-//
-// impl Drawable for FilledCircle {
-//     fn draw(&self, canvas: &mut Canvas, camera: &Camera, brush: Brush) {
-//         let r = brush.thickness / 2.0;
-//         let (x_start, y_start) = camera.to_canvas_coords(self.pos - r);
-//         let (x_end, y_end) = camera.to_canvas_coords(self.pos + r);
-//
-//         if !canvas.in_bounds((x_start, y_start)) && !canvas.in_bounds((x_end, y_end)) {
-//             return;
-//         }
-//
-//         for y in y_start..y_end {
-//             for x in x_start..x_end {
-//                 let p = (x, y);
-//                 if canvas.in_bounds(p)
-//                     && self.pos.dist(camera.to_camera_coords((x as u32, y as u32))) <= r
-//                 {
-//                     canvas[(p.0 as u32, p.1 as u32)] = brush.color;
-//                 }
-//             }
-//         }
-//     }
-// }
+pub struct FilledCircle {
+    pub pos: Point,
+    pub brush: Brush,
+}
+
+impl Drawable for FilledCircle {
+    fn draw(&self, canvas: &mut Canvas, _: &Camera) {
+        let r = self.brush.thickness / 2.0;
+        let start = self.pos - Point::from_xy(r, r);
+        let end = self.pos + Point::from_xy(r, r);
+        let (x_start, y_start) = (start.x as i32, start.y as i32);
+        let (x_end, y_end) = (end.x as i32, end.y as i32);
+
+        if !canvas.in_bounds((x_start, y_start)) && !canvas.in_bounds((x_end, y_end)) {
+            return;
+        }
+
+        for y in y_start..y_end {
+            for x in x_start..x_end {
+                let p = (x, y);
+                if canvas.in_bounds(p)
+                    && self
+                        .pos
+                        .distance(Point::from_xy(x as f32, y as f32))
+                        <= r
+                {
+                    canvas.overlay[p.1 as usize * canvas.width as usize + p.0 as usize] =
+                        self.brush.color.0;
+                }
+            }
+        }
+    }
+}
 
 #[derive(Debug)]
 pub struct Line {
@@ -73,7 +104,7 @@ impl Drawable for Line {
         let path = pb.finish().unwrap();
 
         let mut paint = Paint::default();
-        paint.set_color(self.brush.color);
+        paint.set_color(self.brush.color.to_skia());
 
         let stroke = Stroke {
             width: self.brush.thickness,
