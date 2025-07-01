@@ -31,7 +31,7 @@ fn main() {
         },
     )
     .unwrap();
-    window.set_cursor_style(CursorStyle::Crosshair);
+    window.set_cursor_visibility(false);
     window.set_target_fps(FPS as usize);
 
     let mut canvas = Canvas::new(WIDTH, HEIGHT, Color(0));
@@ -71,13 +71,10 @@ fn main() {
                 if window.get_mouse_down(MouseButton::Right) {
                     camera.update_pos(Point::from_xy(x, y));
                     window.set_cursor_style(CursorStyle::ClosedHand);
+                    window.set_cursor_visibility(true);
                 } else {
                     FilledCircle {
-                        pos: Point::from_xy(x, y)
-                            + Point::from_xy(
-                                10.0 + brush.thickness * camera.zoom,
-                                -10.0 - brush.thickness * camera.zoom,
-                            ),
+                        pos: Point::from_xy(x, y),
                         brush: Brush {
                             color: brush.color,
                             thickness: brush.thickness * camera.zoom,
@@ -85,7 +82,7 @@ fn main() {
                     }
                     .draw(&mut canvas, &camera);
                     camera.end_panning();
-                    window.set_cursor_style(CursorStyle::Crosshair);
+                    window.set_cursor_visibility(false);
                 }
             }
         }
