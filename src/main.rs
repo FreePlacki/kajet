@@ -1,19 +1,18 @@
-use std::{
-    ops::{Add, Mul},
-    time::Instant,
-};
+use std::ops::{Add, Mul};
 
 use canvas::Canvas;
-use minifb::{CursorStyle, Key, MouseButton, MouseMode, Window, WindowOptions};
+use minifb::{CursorStyle, Key, KeyRepeat, MouseButton, MouseMode, Window, WindowOptions};
 use tiny_skia::Point;
 
 use crate::{
     camera::Camera,
-    graphics::{Brush, Color, Drawable, FilledCircle, Line},
+    config::Config,
+    graphics::{Brush, Drawable, FilledCircle, Line},
 };
 
 mod camera;
 mod canvas;
+mod config;
 mod graphics;
 
 const WIDTH: u32 = 1280;
@@ -21,6 +20,14 @@ const HEIGHT: u32 = 720;
 const FPS: u32 = 120;
 
 fn main() {
+    let config = match Config::from_file() {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("[ERROR] Couldn't parse config: {e}");
+            Config::default()
+        }
+    };
+
     let mut window = Window::new(
         "Kajet",
         WIDTH as usize,
@@ -34,11 +41,12 @@ fn main() {
     window.set_cursor_visibility(false);
     window.set_target_fps(FPS as usize);
 
-    let mut canvas = Canvas::new(WIDTH, HEIGHT, Color(0));
+    let mut canvas = Canvas::new(WIDTH, HEIGHT, config.background);
     let mut camera = Camera::default();
+    let mut color_idx = 0;
     let mut brush = Brush {
-        color: Color::from_skia(tiny_skia::Color::WHITE),
-        thickness: 5.0,
+        color: config.colors[color_idx],
+        thickness: config.thickness,
     };
 
     let mut lines = Vec::<Line>::new();
@@ -99,23 +107,33 @@ fn main() {
                 camera.update_zoom(new_zoom, mouse);
             }
         }
-        let updated = camera.update();
 
+        for key in window.get_keys_pressed(KeyRepeat::Yes) {
+            match key {
+                Key::Left => {
+                    color_idx = (color_idx - 1) % config.colors.len();
+                    brush.color = config.colors[color_idx];
+                }
+                Key::Right => {
+                    color_idx = (color_idx + 1) % config.colors.len();
+                    brush.color = config.colors[color_idx];
+                }
+                _ => (),
+            }
+        }
+
+        let updated = camera.update();
         if updated || resized {
-            let now = Instant::now();
             canvas.clear();
             for line in &lines {
                 line.draw(&mut canvas, &camera);
             }
-            println!("Full redraw: {:?}", now.elapsed());
         } else if let Some(line) = lines.last() {
-            // let now = Instant::now();
             if line.points.len() >= 2 {
                 let mut l = Line::new(line.points[line.points.len() - 2], line.brush);
                 l.points.push(line.points[line.points.len() - 1]);
                 l.draw(&mut canvas, &camera);
             }
-            // println!("Partial draw: {:?}", now.elapsed());
         }
 
         window
