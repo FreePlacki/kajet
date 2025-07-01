@@ -6,23 +6,13 @@ use crate::{camera::Camera, canvas::Canvas};
 pub struct Color(pub u32); // ARGB
 
 impl Color {
-    pub fn from_skia(color: tiny_skia::Color) -> Self {
-        let c = color.to_color_u8();
-        Self(u32::from_le_bytes([
-            c.alpha(),
-            c.red(),
-            c.green(),
-            c.blue(),
-        ]))
+    pub fn from_rgba(color: &[u8]) -> Self {
+        Self(u32::from_be_bytes([color[3], color[0], color[1], color[2]]))
     }
 
     pub fn to_skia(self) -> tiny_skia::Color {
         let bytes = self.0.to_be_bytes();
         tiny_skia::Color::from_rgba8(bytes[1], bytes[2], bytes[3], bytes[0])
-    }
-
-    pub fn from_rgba(color: &[u8]) -> Self {
-        Self(u32::from_be_bytes([color[3], color[0], color[1], color[2]]))
     }
 }
 
@@ -56,11 +46,7 @@ impl Drawable for FilledCircle {
         for y in y_start..y_end {
             for x in x_start..x_end {
                 let p = (x, y);
-                if canvas.in_bounds(p)
-                    && self
-                        .pos
-                        .distance(Point::from_xy(x as f32, y as f32))
-                        <= r
+                if canvas.in_bounds(p) && self.pos.distance(Point::from_xy(x as f32, y as f32)) <= r
                 {
                     canvas.overlay[p.1 as usize * canvas.width as usize + p.0 as usize] =
                         self.brush.color.0;

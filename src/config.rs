@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, fs};
 
 use configparser::ini::Ini;
 
@@ -30,8 +30,26 @@ impl Config {
     pub fn from_file() -> Result<Self, String> {
         let mut conf = Ini::new();
 
-        let file = include_str!("../default.conf");
-        let map = conf.read(file.to_string())?;
+        let default_file = include_str!("../default.conf").to_string();
+        let file = if let Some(mut path) = dirs::config_dir() {
+            path.push("kajet");
+            path.set_extension("conf");
+            match fs::read_to_string(&path) {
+                Ok(s) => s,
+                Err(_) => {
+                    let path_str = path.to_str().unwrap();
+                    match fs::write(&path, &default_file) {
+                        Ok(()) => eprintln!("[INFO] Created a config file in {path_str}."),
+                        Err(_) => eprintln!("[ERROR] Couldn't create a config file in {path_str}."),
+                    };
+                    default_file
+                }
+            }
+        } else {
+            default_file
+        };
+
+        let map = conf.read(file)?;
 
         let thickness = Self::get_value(&map, "brush", "thickness")?;
         let thickness = match thickness.parse::<f32>() {
@@ -56,7 +74,7 @@ impl Config {
             colors.push(Self::parse_color(&color)?);
         }
 
-        if colors.len() == 0 {
+        if colors.is_empty() {
             return Err("At least one color has to be defined.".to_string());
         }
 

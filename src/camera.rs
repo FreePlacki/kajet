@@ -1,6 +1,6 @@
 use tiny_skia::Point;
 
-use crate::{FPS, canvas::Canvas};
+use crate::FPS;
 
 pub struct Camera {
     pub pos: Point,
@@ -14,20 +14,6 @@ pub struct Camera {
 }
 
 impl Camera {
-    pub fn get_bounds(&self, canvas: &Canvas) -> (Point, Point) {
-        let w = canvas.width as f32 / self.zoom;
-        let h = canvas.height as f32 / self.zoom;
-
-        (self.pos, self.pos + Point::from_xy(w, h))
-    }
-
-    pub fn to_canvas_coords(&self, point: Point) -> (i32, i32) {
-        let x = ((point.x - self.pos.x) * self.zoom) as i32;
-        let y = ((point.y - self.pos.y) * self.zoom) as i32;
-
-        (x, y)
-    }
-
     pub fn to_camera_coords(&self, point: (u32, u32)) -> Point {
         let x = point.0 as f32 / self.zoom + self.pos.x;
         let y = point.1 as f32 / self.zoom + self.pos.y;
