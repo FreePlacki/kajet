@@ -2,6 +2,12 @@
 name = "kajet"
 version = "0.1.0"
 edition = "2024"
+authors = ["Paweł Bielecki <bieleckipawel10@gmail.com>"]
+description = "A mnimal infinite canvas drawing app"
+readme = "README.md"
+homepage = "https://github.com/FreePlacki/kajet"
+repository = "https://github.com/FreePlacki/kajet"
+license = "MIT"
 
 [dependencies]
 configparser = "3.1.0"

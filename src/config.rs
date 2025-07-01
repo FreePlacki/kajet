@@ -27,11 +27,19 @@ impl Default for Config {
 }
 
 impl Config {
-    pub fn from_file() -> Result<Self, String> {
+    pub fn from_file(path: Option<String>) -> Result<Self, String> {
         let mut conf = Ini::new();
 
         let default_file = include_str!("../default.conf").to_string();
-        let file = if let Some(mut path) = dirs::config_dir() {
+        let file = if let Some(path) = path {
+            match fs::read_to_string(&path) {
+                Ok(s) => s,
+                Err(_) => {
+                    eprintln!("[ERROR] Couldn't read the config file {path}");
+                    default_file
+                }
+            }
+        } else if let Some(mut path) = dirs::config_dir() {
             path.push("kajet");
             path.set_extension("conf");
             match fs::read_to_string(&path) {
@@ -40,7 +48,9 @@ impl Config {
                     let path_str = path.to_str().unwrap();
                     match fs::write(&path, &default_file) {
                         Ok(()) => eprintln!("[INFO] Created a config file in {path_str}."),
-                        Err(_) => eprintln!("[ERROR] Couldn't create a config file in {path_str}."),
+                        Err(_) => {
+                            eprintln!("[ERROR] Couldn't create a config file in {path_str}.")
+                        }
                     };
                     default_file
                 }

@@ -1,4 +1,8 @@
-use std::ops::{Add, Mul};
+use std::{
+    env,
+    ops::{Add, Mul},
+    process,
+};
 
 use canvas::Canvas;
 use minifb::{CursorStyle, Key, KeyRepeat, MouseButton, MouseMode, Window, WindowOptions};
@@ -19,8 +23,26 @@ const WIDTH: u32 = 1280;
 const HEIGHT: u32 = 720;
 const FPS: u32 = 120;
 
+fn usage(prog_name: &str) {
+    eprintln!("{} {}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
+    eprintln!("{}", env!("CARGO_PKG_DESCRIPTION"));
+    eprintln!();
+    eprintln!("Usage: {prog_name} [config path]");
+    process::exit(1);
+}
+
 fn main() {
-    let config = match Config::from_file() {
+    let mut args = env::args();
+    let prog_name = args.next().unwrap();
+
+    let config_path = args.next().inspect(|p| {
+        // is someone tries --help or -h
+        if p.starts_with("-") {
+            usage(&prog_name);
+        }
+    });
+
+    let config = match Config::from_file(config_path) {
         Ok(c) => c,
         Err(e) => {
             eprintln!("[ERROR] Couldn't parse config: {e}");
