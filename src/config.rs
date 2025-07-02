@@ -7,6 +7,7 @@ use crate::graphics::Color;
 #[derive(Debug)]
 pub struct Config {
     pub thickness: f32,
+    pub scroll_sensitivity: f32,
     pub background: Color,
     pub colors: Vec<Color>,
 }
@@ -15,6 +16,7 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             thickness: 5.0,
+            scroll_sensitivity: 1.0,
             background: Color(0),
             colors: vec![
                 Color(0xFFFFFFFF),
@@ -30,7 +32,7 @@ impl Config {
     pub fn from_file(path: Option<String>) -> Result<Self, String> {
         let mut conf = Ini::new();
 
-        let default_file = include_str!("../default.conf").to_string();
+        let default_file = include_str!("../kajet.conf").to_string();
         let file = if let Some(path) = path {
             match fs::read_to_string(&path) {
                 Ok(s) => s,
@@ -70,6 +72,15 @@ impl Config {
             return Err(format!("Brush thickness should be > 0.0, got {thickness}"));
         }
 
+        let scroll_sensitivity = Self::get_value(&map, "controls", "scroll_sensitivity")?;
+        let scroll_sensitivity = match scroll_sensitivity.parse::<f32>() {
+            Ok(t) => Ok(t),
+            Err(e) => Err(e.to_string()),
+        }?;
+        if scroll_sensitivity <= 0.0 {
+            return Err(format!("Scroll sensitivity should be > 0.0, got {thickness}"));
+        }
+
         let background = Self::get_value(&map, "colors", "background")?;
         let background = Self::parse_color(&background)?;
 
@@ -90,6 +101,7 @@ impl Config {
 
         Ok(Self {
             thickness,
+            scroll_sensitivity,
             background,
             colors,
         })

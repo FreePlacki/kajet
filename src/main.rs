@@ -122,7 +122,10 @@ fn main() {
             if window.is_key_down(Key::LeftCtrl) {
                 brush.thickness = brush.thickness.add(scroll_y.signum()).clamp(1.0, 30.0);
             } else {
-                let new_zoom = camera.zoom.mul(1.0 + scroll_y / 10.0).clamp(0.1, 10.0);
+                let new_zoom = camera
+                    .zoom
+                    .mul(1.0 + scroll_y.signum() * 0.25 * config.scroll_sensitivity)
+                    .clamp(0.1, 10.0);
                 let mouse = window
                     .get_mouse_pos(MouseMode::Discard)
                     .map(|m| Point::from_xy(m.0, m.1));
