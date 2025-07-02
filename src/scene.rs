@@ -77,9 +77,37 @@ impl Scene {
         self.brush.color = self.config.colors[self.color_idx];
     }
 
+    pub fn move_images(&mut self) {
+        if let (Some(mouse), Some(prev_mouse)) = (self.mouse, self.prev_mouse) {
+            for img in self.images.iter_mut().filter(|i| i.is_selected) {
+                img.pos += Point::from_xy(
+                    (mouse.x - prev_mouse.x) / self.camera.zoom,
+                    (mouse.y - prev_mouse.y) / self.camera.zoom,
+                );
+                self.redraw = true;
+            }
+        }
+    }
+
     pub fn on_pen_down(&mut self) {
+        if self.mouse.is_none() {
+            return;
+        }
+
+        // TODO: this makes it so that when moving the image fast it looses focus
+        if self.images.iter().any(|i| {
+            i.is_selected
+                && match self.mouse {
+                    Some(m) => i.in_bounds(m, &self.camera),
+                    None => false,
+                }
+        }) {
+            self.move_images();
+            return;
+        }
+
         let pos = {
-            let m = self.mouse.expect("Mouse has to be set if the pen was down");
+            let m = self.mouse.unwrap();
             self.camera.to_camera_coords((m.x as u32, m.y as u32))
         };
 
@@ -104,10 +132,9 @@ impl Scene {
     }
 
     pub fn on_move(&mut self) {
-        self.camera.update_pos(
-            self.mouse.expect("Mouse has to be set if move was done"),
-            self.prev_mouse,
-        );
+        if let Some(mouse) = self.mouse {
+            self.camera.update_pos(mouse, self.prev_mouse);
+        }
     }
 
     pub fn update_cursor(&mut self) {
@@ -149,15 +176,14 @@ impl Scene {
     }
 
     pub fn try_select_image(&mut self) {
-        let mouse = self
-            .mouse
-            .expect("Mouse has to be set when tried to select");
-        // in reverse + break so that only topmost one gets selected
-        for img in self.images.iter_mut().rev() {
-            if img.in_bounds(mouse, &self.camera) {
-                img.is_selected = true;
-                self.redraw = true;
-                break;
+        if let Some(mouse) = self.mouse {
+            // in reverse + break so that only topmost one gets selected
+            for img in self.images.iter_mut().rev() {
+                if img.in_bounds(mouse, &self.camera) {
+                    img.is_selected = true;
+                    self.redraw = true;
+                    break;
+                }
             }
         }
     }
