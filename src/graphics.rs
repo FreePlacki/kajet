@@ -108,6 +108,7 @@ impl Drawable for Line {
     }
 }
 
+#[derive(Clone)]
 pub struct Image {
     pub pos: Point,
     pub pixmap: Pixmap,

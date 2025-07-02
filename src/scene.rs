@@ -162,6 +162,11 @@ impl Scene {
         }
     }
 
+    pub fn try_delete_images(&mut self) {
+        self.images.retain(|i| !i.is_selected);
+        self.redraw = true;
+    }
+
     pub fn draw(&mut self, window: &mut Window) {
         self.redraw |= self.camera.update(self.mouse);
 
