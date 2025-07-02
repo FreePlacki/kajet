@@ -35,7 +35,7 @@ pub struct FilledCircle {
 
 impl Drawable for FilledCircle {
     fn draw(&self, canvas: &mut Canvas, _: &Camera) {
-        let r = self.brush.thickness / 2.0;
+        let r = (self.brush.thickness / 2.0).max(1.0);
         let start = self.pos - Point::from_xy(r, r);
         let end = self.pos + Point::from_xy(r, r);
         let (x_start, y_start) = (start.x as i32, start.y as i32);
@@ -68,7 +68,7 @@ pub struct Line {
 impl Line {
     pub fn new(start: Point, brush: Brush) -> Self {
         Self {
-            points: vec![start],
+            points: vec![start, start],
             finished: false,
             brush,
         }
@@ -77,10 +77,6 @@ impl Line {
 
 impl Drawable for Line {
     fn draw(&self, canvas: &mut Canvas, camera: &Camera) {
-        if self.points.len() < 2 {
-            return;
-        }
-
         let mut pb = PathBuilder::new();
         for seg in self.points.windows(2) {
             let p0 = seg[0];

@@ -9,7 +9,6 @@ pub struct Camera {
     zoom_interp: Interpolator,
     pos_x_interp: Interpolator,
     pos_y_interp: Interpolator,
-    mouse: Option<Point>,
     is_panning: bool,
 }
 
@@ -21,14 +20,13 @@ impl Camera {
         Point::from_xy(x, y)
     }
 
-    pub fn update_zoom(&mut self, target: f32, mouse: Option<Point>) {
+    pub fn update_zoom(&mut self, target: f32) {
         self.zoom_interp = Interpolator::new(self.zoom, target, 0.1);
-        self.mouse = mouse;
     }
 
-    pub fn update_pos(&mut self, mouse: Point) {
+    pub fn update_pos(&mut self, mouse: Point, prev_mouse: Option<Point>) {
         if self.is_panning {
-            if let Some(prev_mouse) = self.mouse {
+            if let Some(prev_mouse) = prev_mouse {
                 let mut diff = prev_mouse - mouse;
                 diff.x /= self.zoom;
                 diff.y /= self.zoom;
@@ -37,19 +35,14 @@ impl Camera {
                 self.pos_y_interp = Interpolator::new(self.pos.y, new_pos.y, 0.0);
             }
         }
-        self.mouse = Some(mouse);
         self.is_panning = true;
-    }
-
-    pub fn update_mouse(&mut self, mouse: Option<Point>) {
-        self.mouse = mouse;
     }
 
     pub fn end_panning(&mut self) {
         self.is_panning = false;
     }
 
-    pub fn update(&mut self) -> bool {
+    pub fn update(&mut self, mouse: Option<Point>) -> bool {
         let mut updated = false;
 
         if let Some(dx) = self.pos_x_interp.advance() {
@@ -65,7 +58,7 @@ impl Camera {
         if let Some(dz) = self.zoom_interp.advance() {
             self.zoom += dz;
 
-            if let Some(Point { x, y }) = self.mouse {
+            if let Some(Point { x, y }) = mouse {
                 self.pos.x -= x * (1.0 / self.zoom - 1.0 / prev_zoom);
                 self.pos.y -= y * (1.0 / self.zoom - 1.0 / prev_zoom);
                 self.pos_x_interp = Interpolator::new(self.pos.x, self.pos.x, 0.0);
@@ -90,7 +83,6 @@ impl Default for Camera {
             zoom_interp: Interpolator::new(1.0, 1.0, 0.0),
             pos_x_interp: Interpolator::new(0.0, 0.0, 0.0),
             pos_y_interp: Interpolator::new(0.0, 0.0, 0.0),
-            mouse: None,
             is_panning: false,
         }
     }
