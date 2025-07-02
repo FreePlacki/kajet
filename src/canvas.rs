@@ -29,7 +29,7 @@ impl Canvas {
         self.pixmap
             .data()
             .chunks(4)
-            .map(|c| Color::from_rgba(c))
+            .map(Color::from_rgba)
             .zip(&self.overlay)
             .map(|(buff, over)| {
                 if *over == self.background.0 {

@@ -1,4 +1,6 @@
-use tiny_skia::{LineCap, LineJoin, Paint, PathBuilder, Point, Stroke, Transform};
+use tiny_skia::{
+    LineCap, LineJoin, Paint, PathBuilder, Pixmap, PixmapPaint, Point, Stroke, Transform,
+};
 
 use crate::{camera::Camera, canvas::Canvas};
 
@@ -104,6 +106,25 @@ impl Drawable for Line {
             &paint,
             &stroke,
             Transform::from_translate(-camera.pos.x, -camera.pos.y)
+                .post_scale(camera.zoom, camera.zoom),
+            None,
+        );
+    }
+}
+
+pub struct Image {
+    pub pos: Point,
+    pub pixmap: Pixmap,
+}
+
+impl Drawable for Image {
+    fn draw(&self, canvas: &mut Canvas, camera: &Camera) {
+        canvas.pixmap.draw_pixmap(
+            0,
+            0,
+            self.pixmap.as_ref(),
+            &PixmapPaint::default(),
+            Transform::from_translate(self.pos.x - camera.pos.x, self.pos.y - camera.pos.y)
                 .post_scale(camera.zoom, camera.zoom),
             None,
         );

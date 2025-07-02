@@ -1,17 +1,20 @@
+#![windows_subsystem = "windows"]
+
 use std::{
     env,
     ops::{Add, Mul},
     process,
 };
 
+use arboard::Clipboard;
 use canvas::Canvas;
 use minifb::{CursorStyle, Key, KeyRepeat, MouseButton, MouseMode, Window, WindowOptions};
-use tiny_skia::Point;
+use tiny_skia::{IntSize, Pixmap, Point};
 
 use crate::{
     camera::Camera,
     config::Config,
-    graphics::{Brush, Drawable, FilledCircle, Line},
+    graphics::{Brush, Drawable, FilledCircle, Image, Line},
 };
 
 mod camera;
@@ -50,6 +53,14 @@ fn main() {
         }
     };
 
+    let mut clipboard = match Clipboard::new() {
+        Ok(c) => Some(c),
+        Err(_) => {
+            eprintln!("[ERROR] Couldn't initialize clipboard");
+            None
+        }
+    };
+
     let mut window = Window::new(
         "Kajet",
         WIDTH as usize,
@@ -72,6 +83,7 @@ fn main() {
     };
 
     let mut lines = Vec::<Line>::new();
+    let mut images = Vec::<Image>::new();
 
     while window.is_open() && !window.is_key_down(Key::Escape) {
         let resized = {
@@ -147,9 +159,41 @@ fn main() {
             }
         }
 
+        if window.is_key_down(Key::LeftCtrl) && window.is_key_pressed(Key::V, KeyRepeat::No) {
+            if let Some(ref mut clipboard) = clipboard {
+                if let Ok(image_data) = clipboard.get_image() {
+                    let img = Pixmap::from_vec(
+                        image_data.bytes.to_vec(),
+                        IntSize::from_wh(image_data.width as u32, image_data.height as u32)
+                            .unwrap(),
+                    );
+
+                    if let Some(img) = img {
+                        let pos = {
+                            if let Some(m) = mouse {
+                                Point::from_xy(
+                                    m.0 - image_data.width as f32 / 2.0 * camera.zoom,
+                                    m.1 - image_data.height as f32 / 2.0 * camera.zoom,
+                                )
+                            } else {
+                                camera.pos
+                            }
+                        };
+                        let pos = camera.to_camera_coords((pos.x as u32, pos.y as u32));
+                        let image = Image { pos, pixmap: img };
+                        image.draw(&mut canvas, &camera);
+                        images.push(image);
+                    }
+                }
+            }
+        }
+
         let updated = camera.update();
         if updated || resized {
             canvas.clear();
+            for img in &images {
+                img.draw(&mut canvas, &camera);
+            }
             for line in &lines {
                 line.draw(&mut canvas, &camera);
             }
