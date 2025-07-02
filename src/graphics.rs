@@ -2,7 +2,7 @@ use tiny_skia::{
     LineCap, LineJoin, Paint, PathBuilder, Pixmap, PixmapPaint, Point, Stroke, Transform,
 };
 
-use crate::{camera::Camera, canvas::Canvas};
+use crate::{camera::Camera, canvas::Canvas, config::Config};
 
 #[derive(Debug, Clone, Copy)]
 pub struct Color(pub u32); // ARGB
@@ -115,10 +115,50 @@ impl Drawable for Line {
 pub struct Image {
     pub pos: Point,
     pub pixmap: Pixmap,
+    pub is_selected: bool,
+    border_color: Color,
+}
+
+impl Image {
+    pub fn new(pos: Point, pixmap: Pixmap, config: &Config) -> Self {
+        Self {
+            pos,
+            pixmap,
+            is_selected: false,
+            border_color: config.colors[0],
+        }
+    }
+
+    pub fn in_bounds(&self, point: Point, camera: &Camera) -> bool {
+        let point = camera.to_camera_coords((point.x as u32, point.y as u32));
+        point.x >= self.pos.x
+            && point.x <= self.pos.x + self.pixmap.width() as f32
+            && point.y >= self.pos.y
+            && point.y <= self.pos.y + self.pixmap.height() as f32
+    }
 }
 
 impl Drawable for Image {
     fn draw(&self, canvas: &mut Canvas, camera: &Camera) {
+        if self.is_selected {
+            let (w, h) = (self.pixmap.width() as f32, self.pixmap.height() as f32);
+            Line {
+                points: vec![
+                    self.pos,
+                    self.pos + Point::from_xy(w, 0.0),
+                    self.pos + Point::from_xy(w, h),
+                    self.pos + Point::from_xy(0.0, h),
+                    self.pos,
+                ],
+                finished: true,
+                brush: Brush {
+                    color: self.border_color,
+                    thickness: 5.0,
+                },
+            }
+            .draw(canvas, camera);
+        }
+
         canvas.pixmap.draw_pixmap(
             0,
             0,

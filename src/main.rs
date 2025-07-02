@@ -86,7 +86,7 @@ fn main() {
     let mut images = Vec::<Image>::new();
 
     while window.is_open() && !window.is_key_down(Key::Escape) {
-        let resized = {
+        let mut redraw = {
             let sz = window.get_size();
             canvas.set_size((sz.0 as u32, sz.1 as u32))
         };
@@ -97,7 +97,10 @@ fn main() {
             let pos = camera.to_camera_coords((x as u32, y as u32));
 
             if window.get_mouse_down(MouseButton::Left) {
-                if let Some(line) = lines.last_mut() {
+                if !window.is_key_down(Key::LeftCtrl) && images.iter().any(|i| i.is_selected) {
+                    redraw = true;
+                    images.iter_mut().for_each(|i| i.is_selected = false);
+                } else if let Some(line) = lines.last_mut() {
                     if line.finished {
                         lines.push(Line::new(pos, brush));
                     } else if line.points.last().unwrap().distance(pos) >= 5.0 / camera.zoom {
@@ -159,37 +162,52 @@ fn main() {
             }
         }
 
-        if window.is_key_down(Key::LeftCtrl) && window.is_key_pressed(Key::V, KeyRepeat::No) {
-            if let Some(ref mut clipboard) = clipboard {
-                if let Ok(image_data) = clipboard.get_image() {
-                    let img = Pixmap::from_vec(
-                        image_data.bytes.to_vec(),
-                        IntSize::from_wh(image_data.width as u32, image_data.height as u32)
-                            .unwrap(),
-                    );
+        if window.is_key_down(Key::LeftCtrl) {
+            if window.is_key_pressed(Key::V, KeyRepeat::No) {
+                if let Some(ref mut clipboard) = clipboard {
+                    if let Ok(image_data) = clipboard.get_image() {
+                        let img = Pixmap::from_vec(
+                            image_data.bytes.to_vec(),
+                            IntSize::from_wh(image_data.width as u32, image_data.height as u32)
+                                .unwrap(),
+                        );
 
-                    if let Some(img) = img {
-                        let pos = {
-                            if let Some(m) = mouse {
-                                Point::from_xy(
-                                    m.0 - image_data.width as f32 / 2.0 * camera.zoom,
-                                    m.1 - image_data.height as f32 / 2.0 * camera.zoom,
-                                )
-                            } else {
-                                camera.pos
-                            }
-                        };
-                        let pos = camera.to_camera_coords((pos.x as u32, pos.y as u32));
-                        let image = Image { pos, pixmap: img };
-                        image.draw(&mut canvas, &camera);
-                        images.push(image);
+                        if let Some(img) = img {
+                            let pos = {
+                                if let Some(m) = mouse {
+                                    Point::from_xy(
+                                        m.0 - image_data.width as f32 / 2.0 * camera.zoom,
+                                        m.1 - image_data.height as f32 / 2.0 * camera.zoom,
+                                    )
+                                } else {
+                                    camera.pos
+                                }
+                            };
+                            let pos = camera.to_camera_coords((pos.x as u32, pos.y as u32));
+                            let image = Image::new(pos, img, &config);
+                            image.draw(&mut canvas, &camera);
+                            images.push(image);
+                        }
+                    }
+                }
+            }
+
+            if window.get_mouse_down(MouseButton::Left) {
+                let mouse = mouse.unwrap();
+                let mouse = Point::from_xy(mouse.0, mouse.1);
+                // in reverse + break so that only topmost one gets selected
+                for img in images.iter_mut().rev() {
+                    if img.in_bounds(mouse, &camera) {
+                        img.is_selected = true;
+                        redraw = true;
+                        break;
                     }
                 }
             }
         }
 
-        let updated = camera.update();
-        if updated || resized {
+        redraw |= camera.update();
+        if redraw {
             canvas.clear();
             for img in &images {
                 img.draw(&mut canvas, &camera);
