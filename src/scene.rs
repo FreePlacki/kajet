@@ -36,6 +36,7 @@ impl Scene {
             color: config.colors[0],
             thickness: config.thickness,
         };
+        let command_invoker = CommandInvoker::new(config.undo_buffer_size);
         Self {
             canvas: Canvas::new(width, height, config.background),
             camera: Camera::default(),
@@ -49,7 +50,7 @@ impl Scene {
             redraw: false,
             mouse: None,
             prev_mouse: None,
-            command_invoker: CommandInvoker::new(),
+            command_invoker,
         }
     }
 

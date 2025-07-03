@@ -104,7 +104,7 @@ fn main() {
         }
 
         if window.is_key_down(Key::LeftCtrl) {
-            for key in window.get_keys_pressed(KeyRepeat::No) {
+            for key in window.get_keys_pressed(KeyRepeat::Yes) {
                 match key {
                     Key::V => {
                         if let Some(ref mut clipboard) = clipboard {

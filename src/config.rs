@@ -8,6 +8,7 @@ use crate::graphics::Color;
 pub struct Config {
     pub thickness: f32,
     pub scroll_sensitivity: f32,
+    pub undo_buffer_size: usize,
     pub background: Color,
     pub colors: Vec<Color>,
 }
@@ -17,6 +18,7 @@ impl Default for Config {
         Self {
             thickness: 5.0,
             scroll_sensitivity: 1.0,
+            undo_buffer_size: 100,
             background: Color(0),
             colors: vec![
                 Color(0xFFFFFFFF),
@@ -72,14 +74,22 @@ impl Config {
             return Err(format!("Brush thickness should be > 0.0, got {thickness}"));
         }
 
-        let scroll_sensitivity = Self::get_value(&map, "controls", "scroll_sensitivity")?;
+        let scroll_sensitivity = Self::get_value(&map, "other", "scroll_sensitivity")?;
         let scroll_sensitivity = match scroll_sensitivity.parse::<f32>() {
             Ok(t) => Ok(t),
             Err(e) => Err(e.to_string()),
         }?;
         if scroll_sensitivity <= 0.0 {
-            return Err(format!("Scroll sensitivity should be > 0.0, got {thickness}"));
+            return Err(format!(
+                "Scroll sensitivity should be > 0.0, got {scroll_sensitivity}"
+            ));
         }
+
+        let undo_buffer_size = Self::get_value(&map, "other", "undo_buffer_size")?;
+        let undo_buffer_size = match undo_buffer_size.parse::<usize>() {
+            Ok(t) => Ok(t),
+            Err(e) => Err(e.to_string()),
+        }?;
 
         let background = Self::get_value(&map, "colors", "background")?;
         let background = Self::parse_color(&background)?;
@@ -102,6 +112,7 @@ impl Config {
         Ok(Self {
             thickness,
             scroll_sensitivity,
+            undo_buffer_size,
             background,
             colors,
         })
