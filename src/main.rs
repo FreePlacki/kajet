@@ -9,6 +9,7 @@ use crate::{config::Config, scene::Scene};
 
 mod camera;
 mod canvas;
+mod command;
 mod config;
 mod graphics;
 mod scene;
@@ -71,6 +72,7 @@ fn main() {
         scene.next_frame(window.get_size(), window.get_mouse_pos(MouseMode::Discard));
 
         if window.get_mouse_down(MouseButton::Left) && !window.is_key_down(Key::LeftCtrl) {
+            scene.update_cursor();
             scene.on_pen_down();
         } else {
             scene.on_pen_up();
@@ -102,11 +104,18 @@ fn main() {
         }
 
         if window.is_key_down(Key::LeftCtrl) {
-            if window.is_key_pressed(Key::V, KeyRepeat::No) {
-                if let Some(ref mut clipboard) = clipboard {
-                    if let Ok(image_data) = clipboard.get_image() {
-                        scene.try_paste_image(image_data);
+            for key in window.get_keys_pressed(KeyRepeat::No) {
+                match key {
+                    Key::V => {
+                        if let Some(ref mut clipboard) = clipboard {
+                            if let Ok(image_data) = clipboard.get_image() {
+                                scene.try_paste_image(image_data);
+                            }
+                        }
                     }
+                    Key::Z => scene.undo(),
+                    Key::R | Key::Y => scene.redo(),
+                    _ => (),
                 }
             }
 

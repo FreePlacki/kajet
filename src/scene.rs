@@ -7,9 +7,15 @@ use tiny_skia::{IntSize, Pixmap, Point};
 use crate::{
     camera::Camera,
     canvas::Canvas,
+    command::{CommandInvoker, DrawLine, PasteImage},
     config::Config,
     graphics::{Brush, Drawable, FilledCircle, Image, Line},
 };
+
+pub struct Contents {
+    pub lines: Vec<Line>,
+    pub images: Vec<Image>,
+}
 
 pub struct Scene {
     canvas: Canvas,
@@ -17,11 +23,11 @@ pub struct Scene {
     config: Config,
     color_idx: usize,
     brush: Brush,
-    lines: Vec<Line>,
-    images: Vec<Image>,
+    contents: Contents,
     redraw: bool,
     mouse: Option<Point>,
     prev_mouse: Option<Point>,
+    command_invoker: CommandInvoker,
 }
 
 impl Scene {
@@ -36,11 +42,14 @@ impl Scene {
             config,
             color_idx: 0,
             brush,
-            lines: vec![],
-            images: vec![],
+            contents: Contents {
+                lines: vec![],
+                images: vec![],
+            },
             redraw: false,
             mouse: None,
             prev_mouse: None,
+            command_invoker: CommandInvoker::new(),
         }
     }
 
@@ -79,7 +88,7 @@ impl Scene {
 
     pub fn move_images(&mut self) {
         if let (Some(mouse), Some(prev_mouse)) = (self.mouse, self.prev_mouse) {
-            for img in self.images.iter_mut().filter(|i| i.is_selected) {
+            for img in self.contents.images.iter_mut().filter(|i| i.is_selected) {
                 img.pos += Point::from_xy(
                     (mouse.x - prev_mouse.x) / self.camera.zoom,
                     (mouse.y - prev_mouse.y) / self.camera.zoom,
@@ -95,7 +104,7 @@ impl Scene {
         }
 
         // TODO: this makes it so that when moving the image fast it looses focus
-        if self.images.iter().any(|i| {
+        if self.contents.images.iter().any(|i| {
             i.is_selected
                 && match self.mouse {
                     Some(m) => i.in_bounds(m, &self.camera),
@@ -111,23 +120,30 @@ impl Scene {
             self.camera.to_camera_coords((m.x as u32, m.y as u32))
         };
 
-        if self.images.iter().any(|i| i.is_selected) {
+        if self.contents.images.iter().any(|i| i.is_selected) {
             self.redraw = true;
-            self.images.iter_mut().for_each(|i| i.is_selected = false);
-        } else if let Some(line) = self.lines.last_mut() {
+            self.contents
+                .images
+                .iter_mut()
+                .for_each(|i| i.is_selected = false);
+        } else if let Some(line) = self.contents.lines.last_mut() {
             if line.finished {
-                self.lines.push(Line::new(pos, self.brush));
+                self.contents.lines.push(Line::new(pos, self.brush));
             } else if line.points.last().unwrap().distance(pos) >= 5.0 / self.camera.zoom {
                 line.points.push(pos);
             }
         } else {
-            self.lines.push(Line::new(pos, self.brush));
+            self.contents.lines.push(Line::new(pos, self.brush));
         }
     }
 
     pub fn on_pen_up(&mut self) {
-        if let Some(line) = self.lines.last_mut() {
-            line.finished = true;
+        if let Some(line) = self.contents.lines.last_mut() {
+            if !line.finished {
+                line.finished = true;
+                let cmd = DrawLine::new(self.contents.lines.last().unwrap().clone());
+                self.command_invoker.push(cmd);
+            }
         }
     }
 
@@ -171,14 +187,15 @@ impl Scene {
             let pos = self.camera.to_camera_coords((pos.x as u32, pos.y as u32));
             let image = Image::new(pos, img, &self.config);
             image.draw(&mut self.canvas, &self.camera);
-            self.images.push(image);
+            self.contents.images.push(image.clone());
+            self.command_invoker.push(PasteImage::new(image));
         }
     }
 
     pub fn try_select_image(&mut self) {
         if let Some(mouse) = self.mouse {
             // in reverse + break so that only topmost one gets selected
-            for img in self.images.iter_mut().rev() {
+            for img in self.contents.images.iter_mut().rev() {
                 if img.in_bounds(mouse, &self.camera) {
                     img.is_selected = true;
                     self.redraw = true;
@@ -189,7 +206,17 @@ impl Scene {
     }
 
     pub fn try_delete_images(&mut self) {
-        self.images.retain(|i| !i.is_selected);
+        self.contents.images.retain(|i| !i.is_selected);
+        self.redraw = true;
+    }
+
+    pub fn undo(&mut self) {
+        self.command_invoker.undo(&mut self.contents);
+        self.redraw = true;
+    }
+
+    pub fn redo(&mut self) {
+        self.command_invoker.redo(&mut self.contents);
         self.redraw = true;
     }
 
@@ -198,13 +225,13 @@ impl Scene {
 
         if self.redraw {
             self.canvas.clear();
-            for img in &self.images {
+            for img in &self.contents.images {
                 img.draw(&mut self.canvas, &self.camera);
             }
-            for line in &self.lines {
+            for line in &self.contents.lines {
                 line.draw(&mut self.canvas, &self.camera);
             }
-        } else if let Some(line) = self.lines.last() {
+        } else if let Some(line) = self.contents.lines.last() {
             if line.points.len() >= 2 {
                 let mut l = Line::new(line.points[line.points.len() - 2], line.brush);
                 l.points.push(line.points[line.points.len() - 1]);

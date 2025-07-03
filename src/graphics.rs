@@ -58,7 +58,7 @@ impl Drawable for FilledCircle {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Line {
     pub points: Vec<Point>,
     pub finished: bool,
@@ -68,7 +68,7 @@ pub struct Line {
 impl Line {
     pub fn new(start: Point, brush: Brush) -> Self {
         Self {
-            points: vec![start, start],
+            points: vec![start],
             finished: false,
             brush,
         }
@@ -77,6 +77,10 @@ impl Line {
 
 impl Drawable for Line {
     fn draw(&self, canvas: &mut Canvas, camera: &Camera) {
+        if self.points.len() < 2 {
+            return;
+        }
+
         let mut pb = PathBuilder::new();
         for seg in self.points.windows(2) {
             let p0 = seg[0];
