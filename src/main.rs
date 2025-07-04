@@ -126,7 +126,13 @@ fn main() {
 
             if window.get_mouse_down(MouseButton::Left) {
                 scene.try_select_image();
+                window.set_cursor_style(CursorStyle::ResizeAll);
+                window.set_cursor_visibility(true);
             }
+        }
+
+        if !(window.is_key_down(Key::LeftCtrl) && window.get_mouse_down(MouseButton::Left)) {
+            scene.end_resizing_image();
         }
 
         if window.is_key_down(Key::LeftCtrl) && window.get_mouse_down(MouseButton::Right) {

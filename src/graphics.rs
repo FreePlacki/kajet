@@ -223,12 +223,20 @@ impl Image {
         }
     }
 
+    pub fn width(&self) -> f32 {
+        self.pixmap.width() as f32 * self.scale
+    }
+
+    pub fn height(&self) -> f32 {
+        self.pixmap.height() as f32 * self.scale
+    }
+
     pub fn in_bounds(&self, point: Point, camera: &Camera) -> bool {
         let point = camera.to_camera_coords((point.x as u32, point.y as u32));
         point.x >= self.pos.x
-            && point.x <= self.pos.x + self.pixmap.width() as f32
+            && point.x <= self.pos.x + self.width()
             && point.y >= self.pos.y
-            && point.y <= self.pos.y + self.pixmap.height() as f32
+            && point.y <= self.pos.y + self.height()
     }
 }
 
@@ -239,7 +247,7 @@ impl Drawable for Image {
 
     fn draw(&self, canvas: &mut Canvas, camera: &Camera) {
         if self.is_selected {
-            let (w, h) = (self.pixmap.width() as f32, self.pixmap.height() as f32);
+            let (w, h) = (self.width(), self.height());
             Line {
                 points: vec![
                     self.pos,

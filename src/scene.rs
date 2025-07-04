@@ -7,7 +7,7 @@ use tiny_skia::{IntSize, Pixmap, Point};
 use crate::{
     camera::Camera,
     canvas::Canvas,
-    command::{AddEraser, CommandInvoker, DrawLine, PasteImage, RemoveImage},
+    command::{AddEraser, CommandInvoker, DrawLine, PasteImage, RemoveImage, ResizeImage},
     config::Config,
     graphics::{Brush, Drawable, Eraser, FilledCircle, FilledRect, Image, Line},
 };
@@ -48,6 +48,7 @@ pub struct Scene {
     mouse: Option<Point>,
     prev_mouse: Option<Point>,
     active_eraser: Option<FilledRect>,
+    resizing_image: Option<(usize, f32)>,
     command_invoker: CommandInvoker,
 }
 
@@ -69,6 +70,7 @@ impl Scene {
             mouse: None,
             prev_mouse: None,
             active_eraser: None,
+            resizing_image: None,
             command_invoker,
         }
     }
@@ -229,11 +231,42 @@ impl Scene {
             // in reverse + break so that only topmost one gets selected
             for img in self.contents.images.iter_mut().rev() {
                 if img.in_bounds(mouse, &self.camera) {
-                    img.is_selected = true;
+                    if img.is_selected {
+                        if self.resizing_image.is_none() || self.resizing_image.unwrap().0 != img.id
+                        {
+                            self.resizing_image = Some((img.id, img.scale));
+                        }
+
+                        if let Some(pm) = self.prev_mouse {
+                            let d = mouse - pm;
+                            let sx = d.x / img.width();
+                            let sy = d.y / img.height();
+                            img.scale *= 1.0 + if sx.abs() > sy.abs() { sx } else { sy };
+                        }
+                    } else {
+                        img.is_selected = true;
+                    }
                     self.redraw = true;
                     break;
                 }
             }
+        }
+    }
+
+    pub fn end_resizing_image(&mut self) {
+        if let Some((id, scale)) = self.resizing_image {
+            let mut img = None;
+            for i in &self.contents.images {
+                if i.id == id {
+                    img = Some(i);
+                    break;
+                }
+            }
+            if let Some(img) = img {
+                self.command_invoker
+                    .push(ResizeImage::new(img.clone(), scale, img.scale));
+            }
+            self.resizing_image = None;
         }
     }
 

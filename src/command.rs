@@ -114,13 +114,49 @@ impl Command for RemoveImage {
     }
 }
 
+pub struct ResizeImage {
+    image: Image,
+    start_scale: f32,
+    end_scale: f32,
+}
+
+impl ResizeImage {
+    pub fn new(image: Image, start_scale: f32, end_scale: f32) -> Self {
+        Self {
+            image,
+            start_scale,
+            end_scale,
+        }
+    }
+}
+
+impl Command for ResizeImage {
+    fn execute(&mut self, contents: &mut Contents) {
+        for img in contents.images.iter_mut() {
+            if img.id == self.image.id {
+                img.scale = self.end_scale;
+                break;
+            }
+        }
+    }
+
+    fn undo(&mut self, contents: &mut Contents) {
+        for img in contents.images.iter_mut() {
+            if img.id == self.image.id {
+                img.scale = self.start_scale;
+                break;
+            }
+        }
+    }
+}
+
 pub struct AddEraser {
     eraser: Eraser,
 }
 
 impl AddEraser {
     pub fn new(eraser: Eraser) -> Self {
-        Self {eraser}
+        Self { eraser }
     }
 }
 
