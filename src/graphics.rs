@@ -117,15 +117,17 @@ pub struct Image {
     pub pos: Point,
     pub pixmap: Pixmap,
     pub is_selected: bool,
+    pub id: usize,
     border_color: Color,
 }
 
 impl Image {
-    pub fn new(pos: Point, pixmap: Pixmap, config: &Config) -> Self {
+    pub fn new(pos: Point, pixmap: Pixmap, id: usize, config: &Config) -> Self {
         Self {
             pos,
             pixmap,
             is_selected: false,
+            id,
             border_color: config.colors[0],
         }
     }

@@ -93,3 +93,23 @@ impl Command for PasteImage {
         contents.images.pop();
     }
 }
+
+pub struct RemoveImage {
+    image: Image,
+}
+
+impl RemoveImage {
+    pub fn new(image: Image) -> Self {
+        Self { image }
+    }
+}
+
+impl Command for RemoveImage {
+    fn execute(&mut self, contents: &mut Contents) {
+        contents.images.retain(|i| i.id != self.image.id);
+    }
+
+    fn undo(&mut self, contents: &mut Contents) {
+        contents.images.push(self.image.clone());
+    }
+}

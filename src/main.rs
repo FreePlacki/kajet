@@ -98,7 +98,7 @@ fn main() {
             match key {
                 Key::Left => scene.update_color(false),
                 Key::Right => scene.update_color(true),
-                Key::Delete | Key::D => scene.try_delete_images(),
+                Key::Delete | Key::D => scene.try_remove_images(),
                 _ => (),
             }
         }

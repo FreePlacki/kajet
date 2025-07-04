@@ -7,7 +7,7 @@ use tiny_skia::{IntSize, Pixmap, Point};
 use crate::{
     camera::Camera,
     canvas::Canvas,
-    command::{CommandInvoker, DrawLine, PasteImage},
+    command::{CommandInvoker, DrawLine, PasteImage, RemoveImage},
     config::Config,
     graphics::{Brush, Drawable, FilledCircle, Image, Line},
 };
@@ -15,6 +15,22 @@ use crate::{
 pub struct Contents {
     pub lines: Vec<Line>,
     pub images: Vec<Image>,
+    next_image_id: usize,
+}
+
+impl Contents {
+    pub fn new() -> Self {
+        Self {
+            lines: vec![],
+            images: vec![],
+            next_image_id: 0,
+        }
+    }
+
+    pub fn next_image_id(&mut self) -> usize {
+        self.next_image_id += 1;
+        self.next_image_id - 1
+    }
 }
 
 pub struct Scene {
@@ -43,10 +59,7 @@ impl Scene {
             config,
             color_idx: 0,
             brush,
-            contents: Contents {
-                lines: vec![],
-                images: vec![],
-            },
+            contents: Contents::new(),
             redraw: false,
             mouse: None,
             prev_mouse: None,
@@ -186,7 +199,7 @@ impl Scene {
                 }
             };
             let pos = self.camera.to_camera_coords((pos.x as u32, pos.y as u32));
-            let image = Image::new(pos, img, &self.config);
+            let image = Image::new(pos, img, self.contents.next_image_id(), &self.config);
             image.draw(&mut self.canvas, &self.camera);
             self.contents.images.push(image.clone());
             self.command_invoker.push(PasteImage::new(image));
@@ -206,8 +219,15 @@ impl Scene {
         }
     }
 
-    pub fn try_delete_images(&mut self) {
-        self.contents.images.retain(|i| !i.is_selected);
+    pub fn try_remove_images(&mut self) {
+        self.contents.images.retain(|i| {
+            if i.is_selected {
+                self.command_invoker.push(RemoveImage::new(i.clone()));
+                false
+            } else {
+                true
+            }
+        });
         self.redraw = true;
     }
 
