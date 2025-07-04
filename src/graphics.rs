@@ -197,17 +197,26 @@ pub struct Image {
     pub pos: Point,
     pub pixmap: Pixmap,
     pub is_selected: bool,
+    pub scale: f32,
     pub id: usize,
     z: usize,
     border_color: Color,
 }
 
 impl Image {
-    pub fn new(pos: Point, pixmap: Pixmap, id: usize, z: usize, config: &Config) -> Self {
+    pub fn new(
+        pos: Point,
+        pixmap: Pixmap,
+        scale: f32,
+        id: usize,
+        z: usize,
+        config: &Config,
+    ) -> Self {
         Self {
             pos,
             pixmap,
             is_selected: false,
+            scale,
             id,
             z,
             border_color: config.colors[0],
@@ -254,8 +263,11 @@ impl Drawable for Image {
             0,
             self.pixmap.as_ref(),
             &PixmapPaint::default(),
-            Transform::from_translate(self.pos.x - camera.pos.x, self.pos.y - camera.pos.y)
-                .post_scale(camera.zoom, camera.zoom),
+            Transform::from_translate(
+                (self.pos.x - camera.pos.x) / self.scale,
+                (self.pos.y - camera.pos.y) / self.scale,
+            )
+            .post_scale(camera.zoom * self.scale, camera.zoom * self.scale),
             None,
         );
     }

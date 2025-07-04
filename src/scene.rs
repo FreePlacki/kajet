@@ -209,9 +209,11 @@ impl Scene {
                 }
             };
             let pos = self.camera.to_camera_coords((pos.x as u32, pos.y as u32));
+            self.contents.z += 1;
             let image = Image::new(
                 pos,
                 img,
+                1.0 / self.camera.zoom,
                 self.contents.next_image_id(),
                 self.contents.z,
                 &self.config,
