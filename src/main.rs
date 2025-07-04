@@ -71,19 +71,24 @@ fn main() {
     while window.is_open() && !window.is_key_down(Key::Escape) {
         scene.next_frame(window.get_size(), window.get_mouse_pos(MouseMode::Discard));
 
-        if window.get_mouse_down(MouseButton::Left) && !window.is_key_down(Key::LeftCtrl) {
-            scene.update_cursor();
-            scene.on_pen_down();
-        } else {
-            scene.on_pen_up();
-            if window.get_mouse_down(MouseButton::Right) {
-                scene.on_move();
-                window.set_cursor_style(CursorStyle::ClosedHand);
-                window.set_cursor_visibility(true);
-            } else {
+        if !window.is_key_down(Key::LeftCtrl) {
+            if window.get_mouse_down(MouseButton::Left) {
                 scene.update_cursor();
-                window.set_cursor_visibility(false);
+                scene.on_pen_down();
+            } else {
+                scene.on_pen_up();
+                if window.get_mouse_down(MouseButton::Right) {
+                    scene.on_move();
+                    window.set_cursor_style(CursorStyle::ClosedHand);
+                    window.set_cursor_visibility(true);
+                } else {
+                    scene.update_cursor();
+                    window.set_cursor_visibility(false);
+                }
             }
+        } else if !window.get_mouse_down(MouseButton::Right) {
+            scene.update_cursor();
+            window.set_cursor_visibility(false);
         }
 
         if let Some((_scroll_x, scroll_y)) = window.get_scroll_wheel() {
@@ -122,6 +127,14 @@ fn main() {
             if window.get_mouse_down(MouseButton::Left) {
                 scene.try_select_image();
             }
+        }
+
+        if window.is_key_down(Key::LeftCtrl) && window.get_mouse_down(MouseButton::Right) {
+            window.set_cursor_style(CursorStyle::Arrow);
+            window.set_cursor_visibility(true);
+            scene.on_erase();
+        } else {
+            scene.on_erase_end();
         }
 
         scene.draw(&mut window);

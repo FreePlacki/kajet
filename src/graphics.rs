@@ -1,5 +1,5 @@
 use tiny_skia::{
-    LineCap, LineJoin, Paint, PathBuilder, Pixmap, PixmapPaint, Point, Stroke, Transform,
+    LineCap, LineJoin, Paint, PathBuilder, Pixmap, PixmapPaint, Point, Rect, Stroke, Transform,
 };
 
 use crate::{camera::Camera, canvas::Canvas, config::Config};
@@ -25,6 +25,7 @@ pub struct Brush {
 }
 
 pub trait Drawable {
+    fn z(&self) -> usize;
     fn draw(&self, canvas: &mut Canvas, camera: &Camera);
 }
 
@@ -34,6 +35,10 @@ pub struct FilledCircle {
 }
 
 impl Drawable for FilledCircle {
+    fn z(&self) -> usize {
+        0
+    }
+
     fn draw(&self, canvas: &mut Canvas, _: &Camera) {
         let r = (self.brush.thickness / 2.0).max(1.0);
         let start = self.pos - Point::from_xy(r, r);
@@ -51,7 +56,76 @@ impl Drawable for FilledCircle {
                 if canvas.in_bounds(p) && self.pos.distance(Point::from_xy(x as f32, y as f32)) <= r
                 {
                     canvas.overlay[p.1 as usize * canvas.width as usize + p.0 as usize] =
-                        self.brush.color.0;
+                        Some(self.brush.color.0);
+                }
+            }
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct FilledRect {
+    pub pos: Point,
+    pub width: f32,
+    pub height: f32,
+    pub color: Color,
+}
+
+impl FilledRect {
+    pub fn to_skia(&self) -> Rect {
+        let x_start = if self.width < 0.0 {
+            self.pos.x + self.width
+        } else {
+            self.pos.x
+        };
+        let y_start = if self.height < 0.0 {
+            self.pos.y + self.height
+        } else {
+            self.pos.y
+        };
+
+        Rect::from_xywh(x_start, y_start, self.width.abs(), self.height.abs()).unwrap()
+    }
+}
+
+impl Drawable for FilledRect {
+    fn z(&self) -> usize {
+        0
+    }
+
+    fn draw(&self, canvas: &mut Canvas, _: &Camera) {
+        let x_start = if self.width < 0.0 {
+            self.pos.x + self.width
+        } else {
+            self.pos.x
+        } as i32;
+        let y_start = if self.height < 0.0 {
+            self.pos.y + self.height
+        } else {
+            self.pos.y
+        } as i32;
+
+        let x_end = if self.width < 0.0 {
+            self.pos.x
+        } else {
+            self.pos.x + self.width
+        } as i32;
+        let y_end = if self.height < 0.0 {
+            self.pos.y
+        } else {
+            self.pos.y + self.height
+        } as i32;
+
+        if !canvas.in_bounds((x_start, y_start)) && !canvas.in_bounds((x_end, y_end)) {
+            return;
+        }
+
+        for y in y_start..y_end {
+            for x in x_start..x_end {
+                let p = (x, y);
+                if canvas.in_bounds(p) {
+                    canvas.overlay[p.1 as usize * canvas.width as usize + p.0 as usize] =
+                        Some(self.color.0);
                 }
             }
         }
@@ -63,19 +137,25 @@ pub struct Line {
     pub points: Vec<Point>,
     pub finished: bool,
     pub brush: Brush,
+    z: usize,
 }
 
 impl Line {
-    pub fn new(start: Point, brush: Brush) -> Self {
+    pub fn new(start: Point, brush: Brush, z: usize) -> Self {
         Self {
             points: vec![start],
             finished: false,
             brush,
+            z,
         }
     }
 }
 
 impl Drawable for Line {
+    fn z(&self) -> usize {
+        self.z
+    }
+
     fn draw(&self, canvas: &mut Canvas, camera: &Camera) {
         if self.points.len() < 2 {
             return;
@@ -118,16 +198,18 @@ pub struct Image {
     pub pixmap: Pixmap,
     pub is_selected: bool,
     pub id: usize,
+    z: usize,
     border_color: Color,
 }
 
 impl Image {
-    pub fn new(pos: Point, pixmap: Pixmap, id: usize, config: &Config) -> Self {
+    pub fn new(pos: Point, pixmap: Pixmap, id: usize, z: usize, config: &Config) -> Self {
         Self {
             pos,
             pixmap,
             is_selected: false,
             id,
+            z,
             border_color: config.colors[0],
         }
     }
@@ -142,6 +224,10 @@ impl Image {
 }
 
 impl Drawable for Image {
+    fn z(&self) -> usize {
+        self.z
+    }
+
     fn draw(&self, canvas: &mut Canvas, camera: &Camera) {
         if self.is_selected {
             let (w, h) = (self.pixmap.width() as f32, self.pixmap.height() as f32);
@@ -154,6 +240,7 @@ impl Drawable for Image {
                     self.pos,
                 ],
                 finished: true,
+                z: self.z,
                 brush: Brush {
                     color: self.border_color,
                     thickness: 5.0,
@@ -168,6 +255,37 @@ impl Drawable for Image {
             self.pixmap.as_ref(),
             &PixmapPaint::default(),
             Transform::from_translate(self.pos.x - camera.pos.x, self.pos.y - camera.pos.y)
+                .post_scale(camera.zoom, camera.zoom),
+            None,
+        );
+    }
+}
+
+#[derive(Clone)]
+pub struct Eraser {
+    rect: Rect,
+    color: Color,
+    z: usize,
+}
+
+impl Eraser {
+    pub fn new(rect: Rect, color: Color, z: usize) -> Self {
+        Self { rect, color, z }
+    }
+}
+
+impl Drawable for Eraser {
+    fn z(&self) -> usize {
+        self.z
+    }
+
+    fn draw(&self, canvas: &mut Canvas, camera: &Camera) {
+        let mut paint = Paint::default();
+        paint.set_color(self.color.to_skia());
+        canvas.pixmap.fill_rect(
+            self.rect,
+            &paint,
+            Transform::from_translate(-camera.pos.x, -camera.pos.y)
                 .post_scale(camera.zoom, camera.zoom),
             None,
         );

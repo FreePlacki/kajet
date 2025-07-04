@@ -7,14 +7,16 @@ use tiny_skia::{IntSize, Pixmap, Point};
 use crate::{
     camera::Camera,
     canvas::Canvas,
-    command::{CommandInvoker, DrawLine, PasteImage, RemoveImage},
+    command::{AddEraser, CommandInvoker, DrawLine, PasteImage, RemoveImage},
     config::Config,
-    graphics::{Brush, Drawable, FilledCircle, Image, Line},
+    graphics::{Brush, Drawable, Eraser, FilledCircle, FilledRect, Image, Line},
 };
 
 pub struct Contents {
     pub lines: Vec<Line>,
     pub images: Vec<Image>,
+    pub erasers: Vec<Eraser>,
+    pub z: usize,
     next_image_id: usize,
 }
 
@@ -23,6 +25,8 @@ impl Contents {
         Self {
             lines: vec![],
             images: vec![],
+            erasers: vec![],
+            z: 0,
             next_image_id: 0,
         }
     }
@@ -43,6 +47,7 @@ pub struct Scene {
     redraw: bool,
     mouse: Option<Point>,
     prev_mouse: Option<Point>,
+    active_eraser: Option<FilledRect>,
     command_invoker: CommandInvoker,
 }
 
@@ -63,6 +68,7 @@ impl Scene {
             redraw: false,
             mouse: None,
             prev_mouse: None,
+            active_eraser: None,
             command_invoker,
         }
     }
@@ -142,12 +148,16 @@ impl Scene {
                 .for_each(|i| i.is_selected = false);
         } else if let Some(line) = self.contents.lines.last_mut() {
             if line.finished {
-                self.contents.lines.push(Line::new(pos, self.brush));
+                self.contents
+                    .lines
+                    .push(Line::new(pos, self.brush, self.contents.z));
             } else if line.points.last().unwrap().distance(pos) >= 5.0 / self.camera.zoom {
                 line.points.push(pos);
             }
         } else {
-            self.contents.lines.push(Line::new(pos, self.brush));
+            self.contents
+                .lines
+                .push(Line::new(pos, self.brush, self.contents.z));
         }
     }
 
@@ -199,7 +209,13 @@ impl Scene {
                 }
             };
             let pos = self.camera.to_camera_coords((pos.x as u32, pos.y as u32));
-            let image = Image::new(pos, img, self.contents.next_image_id(), &self.config);
+            let image = Image::new(
+                pos,
+                img,
+                self.contents.next_image_id(),
+                self.contents.z,
+                &self.config,
+            );
             image.draw(&mut self.canvas, &self.camera);
             self.contents.images.push(image.clone());
             self.command_invoker.push(PasteImage::new(image));
@@ -231,6 +247,47 @@ impl Scene {
         self.redraw = true;
     }
 
+    pub fn on_erase(&mut self) {
+        if let (Some(m), Some(pm)) = (self.mouse, self.prev_mouse) {
+            if let Some(eraser) = &mut self.active_eraser {
+                eraser.width += m.x - pm.x;
+                eraser.height += m.y - pm.y;
+            } else {
+                self.active_eraser = Some(FilledRect {
+                    pos: m,
+                    width: 0.0,
+                    height: 0.0,
+                    color: self.config.background,
+                })
+            }
+        }
+    }
+
+    pub fn on_erase_end(&mut self) {
+        if let Some(eraser) = &self.active_eraser {
+            let pos = self
+                .camera
+                .to_camera_coords((eraser.pos.x as u32, eraser.pos.y as u32));
+            let rect = FilledRect {
+                pos,
+                width: eraser.width / self.camera.zoom,
+                height: eraser.height / self.camera.zoom,
+                color: eraser.color,
+            }
+            .to_skia();
+
+            self.contents
+                .erasers
+                .push(Eraser::new(rect, eraser.color, self.contents.z));
+            self.contents.z += 1;
+            self.active_eraser = None;
+            self.redraw = true;
+            self.command_invoker.push(AddEraser::new(
+                self.contents.erasers.last().unwrap().clone(),
+            ));
+        }
+    }
+
     pub fn undo(&mut self) {
         self.command_invoker.undo(&mut self.contents);
         self.redraw = true;
@@ -246,17 +303,23 @@ impl Scene {
 
         if self.redraw {
             self.canvas.clear();
-            for img in &self.contents.images {
-                img.draw(&mut self.canvas, &self.camera);
-            }
-            for line in &self.contents.lines {
-                line.draw(&mut self.canvas, &self.camera);
-            }
+
+            let mut combined = Vec::<&dyn Drawable>::new();
+            combined.extend(self.contents.images.iter().map(|i| i as &dyn Drawable));
+            combined.extend(self.contents.lines.iter().map(|i| i as &dyn Drawable));
+            combined.extend(self.contents.erasers.iter().map(|i| i as &dyn Drawable));
+            combined.sort_by_key(|i| i.z());
+            combined
+                .iter()
+                .for_each(|i| i.draw(&mut self.canvas, &self.camera));
         } else if let Some(line) = self.contents.lines.last() {
-            if line.points.len() >= 2 {
-                let mut l = Line::new(line.points[line.points.len() - 2], line.brush);
+            if line.points.len() >= 2 && !line.finished {
+                let mut l = Line::new(line.points[line.points.len() - 2], line.brush, line.z());
                 l.points.push(line.points[line.points.len() - 1]);
                 l.draw(&mut self.canvas, &self.camera);
+            }
+            if let Some(eraser) = &self.active_eraser {
+                eraser.draw(&mut self.canvas, &self.camera);
             }
         }
 

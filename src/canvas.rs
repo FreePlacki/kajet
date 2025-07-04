@@ -6,7 +6,7 @@ pub struct Canvas {
     pub pixmap: Pixmap,
     pub width: u32,
     pub height: u32,
-    pub overlay: Vec<u32>,
+    pub overlay: Vec<Option<u32>>,
     background: Color,
 }
 
@@ -16,7 +16,7 @@ impl Canvas {
             pixmap: Pixmap::new(width, height).unwrap(),
             width,
             height,
-            overlay: vec![background.0; (width * height) as usize],
+            overlay: vec![None; (width * height) as usize],
             background,
         }
     }
@@ -31,13 +31,7 @@ impl Canvas {
             .chunks(4)
             .map(Color::from_rgba)
             .zip(&self.overlay)
-            .map(|(buff, over)| {
-                if *over == self.background.0 {
-                    buff.0
-                } else {
-                    *over
-                }
-            })
+            .map(|(buff, over)| over.unwrap_or(buff.0))
             .collect()
     }
 
@@ -46,7 +40,7 @@ impl Canvas {
     }
 
     pub fn clear_overlay(&mut self) {
-        self.overlay.fill(self.background.0);
+        self.overlay.fill(None);
     }
 
     pub fn set_size(&mut self, size: (u32, u32)) -> bool {
@@ -57,7 +51,7 @@ impl Canvas {
         self.width = size.0;
         self.height = size.1;
         self.pixmap = Pixmap::new(self.width, self.height).unwrap();
-        self.overlay = vec![self.background.0; (self.width * self.height) as usize];
+        self.overlay = vec![None; (self.width * self.height) as usize];
 
         true
     }

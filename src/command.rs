@@ -1,7 +1,7 @@
 use std::collections::VecDeque;
 
 use crate::{
-    graphics::{Image, Line},
+    graphics::{Eraser, Image, Line},
     scene::Contents,
 };
 
@@ -111,5 +111,25 @@ impl Command for RemoveImage {
 
     fn undo(&mut self, contents: &mut Contents) {
         contents.images.push(self.image.clone());
+    }
+}
+
+pub struct AddEraser {
+    eraser: Eraser,
+}
+
+impl AddEraser {
+    pub fn new(eraser: Eraser) -> Self {
+        Self {eraser}
+    }
+}
+
+impl Command for AddEraser {
+    fn execute(&mut self, contents: &mut Contents) {
+        contents.erasers.push(self.eraser.clone());
+    }
+
+    fn undo(&mut self, contents: &mut Contents) {
+        contents.erasers.pop();
     }
 }
