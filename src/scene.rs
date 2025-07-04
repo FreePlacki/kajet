@@ -203,8 +203,8 @@ impl Scene {
             let pos = {
                 if let Some(m) = self.mouse {
                     Point::from_xy(
-                        m.x - image_data.width as f32 / 2.0 * self.camera.zoom,
-                        m.y - image_data.height as f32 / 2.0 * self.camera.zoom,
+                        m.x - image_data.width as f32 / 2.0,
+                        m.y - image_data.height as f32 / 2.0,
                     )
                 } else {
                     self.camera.pos
