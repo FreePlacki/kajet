@@ -9,7 +9,7 @@ use crate::{
     canvas::Canvas,
     command::{AddEraser, CommandInvoker, DrawLine, PasteImage, RemoveImage, ResizeImage},
     config::Config,
-    graphics::{Brush, Drawable, Eraser, FilledCircle, FilledRect, Image, Line},
+    graphics::{Brush, Drawable, Eraser, FilledCircle, FilledRect, Image, Line, StraightLine},
 };
 
 pub struct Contents {
@@ -120,7 +120,7 @@ impl Scene {
         }
     }
 
-    pub fn on_pen_down(&mut self) {
+    pub fn on_pen_down(&mut self, shift_down: bool) {
         if self.mouse.is_none() {
             return;
         }
@@ -153,7 +153,9 @@ impl Scene {
                 self.contents
                     .lines
                     .push(Line::new(pos, self.brush, self.contents.z));
-            } else if line.points.last().unwrap().distance(pos) >= 5.0 / self.camera.zoom {
+            } else if !shift_down
+                && line.points.last().unwrap().distance(pos) >= 5.0 / self.camera.zoom
+            {
                 line.points.push(pos);
             }
         } else {
@@ -167,6 +169,14 @@ impl Scene {
         if let Some(line) = self.contents.lines.last_mut() {
             if !line.finished {
                 line.finished = true;
+                // to draw the rest when holding shift
+                if let Some(mouse) = self.mouse {
+                    line.points.push(
+                        self.camera
+                            .to_camera_coords((mouse.x as u32, mouse.y as u32)),
+                    );
+                    self.redraw = true;
+                }
                 let cmd = DrawLine::new(self.contents.lines.last().unwrap().clone());
                 self.command_invoker.push(cmd);
             }
@@ -189,6 +199,19 @@ impl Scene {
                 },
             }
             .draw(&mut self.canvas, &self.camera);
+
+            if let Some(line) = self.contents.lines.last() {
+                if !line.finished {
+                    StraightLine {
+                        start: *line.points.last().unwrap(),
+                        end: self
+                            .camera
+                            .to_camera_coords((mouse.x as u32, mouse.y as u32)),
+                        brush: self.brush,
+                    }
+                    .draw(&mut self.canvas, &self.camera);
+                }
+            }
         }
         self.camera.end_panning();
     }

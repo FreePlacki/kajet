@@ -56,7 +56,6 @@ impl Drawable for FilledCircle {
     }
 }
 
-#[derive(Debug)]
 pub struct FilledRect {
     pub pos: Point,
     pub width: f32,
@@ -78,6 +77,44 @@ impl FilledRect {
         };
 
         Rect::from_xywh(x_start, y_start, self.width.abs(), self.height.abs()).unwrap()
+    }
+}
+
+pub struct StraightLine {
+    pub start: Point,
+    pub end: Point,
+    pub brush: Brush,
+}
+
+impl Drawable for StraightLine {
+    fn z(&self) -> usize {
+        0
+    }
+
+    fn draw(&self, canvas: &mut Canvas, camera: &Camera) {
+        let mut pb = PathBuilder::new();
+        pb.move_to(self.start.x, self.start.y);
+        pb.line_to(self.end.x, self.end.y);
+        let path = pb.finish().unwrap();
+
+        let mut paint = Paint::default();
+        paint.set_color(self.brush.color.to_skia());
+
+        let stroke = Stroke {
+            width: self.brush.thickness,
+            line_cap: LineCap::Round,
+            line_join: LineJoin::Round,
+            ..Default::default()
+        };
+
+        canvas.overlay.stroke_path(
+            &path,
+            &paint,
+            &stroke,
+            Transform::from_translate(-camera.pos.x, -camera.pos.y)
+                .post_scale(camera.zoom, camera.zoom),
+            None,
+        );
     }
 }
 

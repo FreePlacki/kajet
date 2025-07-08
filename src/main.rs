@@ -1,4 +1,4 @@
-#![windows_subsystem = "windows"]
+//#![windows_subsystem = "windows"]
 
 use std::{env, process};
 
@@ -74,7 +74,7 @@ fn main() {
         if !window.is_key_down(Key::LeftCtrl) {
             if window.get_mouse_down(MouseButton::Left) {
                 scene.update_cursor();
-                scene.on_pen_down();
+                scene.on_pen_down(window.is_key_down(Key::LeftShift));
             } else {
                 scene.on_pen_up();
                 if window.get_mouse_down(MouseButton::Right) {
