@@ -66,7 +66,7 @@ fn main() {
     window.set_cursor_visibility(false);
     window.set_target_fps(FPS as usize);
 
-    let mut scene = Scene::new(WIDTH, HEIGHT, config);
+    let mut scene = Scene::new(1, 1, config);
 
     while window.is_open() && !window.is_key_down(Key::Escape) {
         scene.next_frame(window.get_size(), window.get_mouse_pos(MouseMode::Discard));

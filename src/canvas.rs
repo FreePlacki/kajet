@@ -50,9 +50,13 @@ impl Canvas {
 
         self.width = size.0;
         self.height = size.1;
-        self.pixmap = Pixmap::new(self.width, self.height).unwrap();
-        self.overlay = vec![None; (self.width * self.height) as usize];
-
-        true
+        let pixmap = Pixmap::new(self.width, self.height);
+        if let Some(pixmap) = pixmap {
+            self.pixmap = pixmap;
+            self.overlay = vec![None; (self.width * self.height) as usize];
+            true
+        } else {
+            false
+        }
     }
 }
