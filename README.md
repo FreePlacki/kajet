@@ -4,11 +4,11 @@ A mnimal infinite canvas drawing app
 
 ## Usage
 
-- `LMB` - drag to draw
+- `LMB` - drag to draw (hold `Shift` to draw a straight line)
 - `RMB` - drag to move the camera
-- `SCROLL` - zoom in/out
-- `Ctrl+SCROLL` - change thickness
-- `LEFT/RIGHT ARROWS` - cycle colors
+- `Scroll` - zoom in/out
+- `Ctrl+Scroll` - change thickness
+- `Left/Right` - cycle colors
 - `Ctrl+RMB` - drag to erase
 - `Ctrl+Z` - undo
 - `Ctrl+R/Ctrl+Y` - redo
