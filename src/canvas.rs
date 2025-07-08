@@ -6,7 +6,7 @@ pub struct Canvas {
     pub pixmap: Pixmap,
     pub width: u32,
     pub height: u32,
-    pub overlay: Vec<Option<u32>>,
+    pub overlay: Pixmap,
     background: Color,
 }
 
@@ -16,13 +16,9 @@ impl Canvas {
             pixmap: Pixmap::new(width, height).unwrap(),
             width,
             height,
-            overlay: vec![None; (width * height) as usize],
+            overlay: Pixmap::new(width, height).unwrap(),
             background,
         }
-    }
-
-    pub fn in_bounds(&self, pos: (i32, i32)) -> bool {
-        pos.0 >= 0 && pos.0 < self.width as i32 && pos.1 >= 0 && pos.1 < self.height as i32
     }
 
     pub fn get_buffer(&self) -> Vec<u32> {
@@ -30,8 +26,14 @@ impl Canvas {
             .data()
             .chunks(4)
             .map(Color::from_rgba)
-            .zip(&self.overlay)
-            .map(|(buff, over)| over.unwrap_or(buff.0))
+            .zip(self.overlay.data().chunks(4).map(|c| {
+                if c[3] == 0 {
+                    None
+                } else {
+                    Some(Color::from_rgba(c).0)
+                }
+            }))
+            .map(|(base, overlay_opt)| overlay_opt.unwrap_or(base.0))
             .collect()
     }
 
@@ -40,7 +42,7 @@ impl Canvas {
     }
 
     pub fn clear_overlay(&mut self) {
-        self.overlay.fill(None);
+        self.overlay.fill(tiny_skia::Color::from_rgba8(0, 0, 0, 0));
     }
 
     pub fn set_size(&mut self, size: (u32, u32)) -> bool {
@@ -53,7 +55,7 @@ impl Canvas {
         let pixmap = Pixmap::new(self.width, self.height);
         if let Some(pixmap) = pixmap {
             self.pixmap = pixmap;
-            self.overlay = vec![None; (self.width * self.height) as usize];
+            self.overlay = Pixmap::new(self.width, self.height).unwrap();
             true
         } else {
             false

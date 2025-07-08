@@ -1,5 +1,6 @@
 use tiny_skia::{
-    LineCap, LineJoin, Paint, PathBuilder, Pixmap, PixmapPaint, Point, Rect, Stroke, Transform,
+    FillRule, LineCap, LineJoin, Paint, PathBuilder, Pixmap, PixmapPaint, Point, Rect, Stroke,
+    Transform,
 };
 
 use crate::{camera::Camera, canvas::Canvas, config::Config};
@@ -41,25 +42,17 @@ impl Drawable for FilledCircle {
 
     fn draw(&self, canvas: &mut Canvas, _: &Camera) {
         let r = (self.brush.thickness / 2.0).max(1.0);
-        let start = self.pos - Point::from_xy(r, r);
-        let end = self.pos + Point::from_xy(r, r);
-        let (x_start, y_start) = (start.x as i32, start.y as i32);
-        let (x_end, y_end) = (end.x as i32, end.y as i32);
 
-        if !canvas.in_bounds((x_start, y_start)) && !canvas.in_bounds((x_end, y_end)) {
-            return;
-        }
-
-        for y in y_start..y_end {
-            for x in x_start..x_end {
-                let p = (x, y);
-                if canvas.in_bounds(p) && self.pos.distance(Point::from_xy(x as f32, y as f32)) <= r
-                {
-                    canvas.overlay[p.1 as usize * canvas.width as usize + p.0 as usize] =
-                        Some(self.brush.color.0);
-                }
-            }
-        }
+        let path = PathBuilder::from_circle(self.pos.x, self.pos.y, r).unwrap();
+        let mut paint = Paint::default();
+        paint.set_color(self.brush.color.to_skia());
+        canvas.overlay.fill_path(
+            &path,
+            &paint,
+            FillRule::Winding,
+            Transform::identity(),
+            None,
+        );
     }
 }
 
@@ -94,41 +87,12 @@ impl Drawable for FilledRect {
     }
 
     fn draw(&self, canvas: &mut Canvas, _: &Camera) {
-        let x_start = if self.width < 0.0 {
-            self.pos.x + self.width
-        } else {
-            self.pos.x
-        } as i32;
-        let y_start = if self.height < 0.0 {
-            self.pos.y + self.height
-        } else {
-            self.pos.y
-        } as i32;
-
-        let x_end = if self.width < 0.0 {
-            self.pos.x
-        } else {
-            self.pos.x + self.width
-        } as i32;
-        let y_end = if self.height < 0.0 {
-            self.pos.y
-        } else {
-            self.pos.y + self.height
-        } as i32;
-
-        if !canvas.in_bounds((x_start, y_start)) && !canvas.in_bounds((x_end, y_end)) {
-            return;
-        }
-
-        for y in y_start..y_end {
-            for x in x_start..x_end {
-                let p = (x, y);
-                if canvas.in_bounds(p) {
-                    canvas.overlay[p.1 as usize * canvas.width as usize + p.0 as usize] =
-                        Some(self.color.0);
-                }
-            }
-        }
+        let rect = self.to_skia();
+        let mut paint = Paint::default();
+        paint.set_color(self.color.to_skia());
+        canvas
+            .overlay
+            .fill_rect(rect, &paint, Transform::identity(), None);
     }
 }
 
