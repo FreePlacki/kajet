@@ -23,7 +23,7 @@ A mnimal infinite canvas drawing app
 A [configuration file] is created in the default config directory.
 You may provide an alternate path as a program argument.
 
-[configuration file]: https://github.com/FreePlacki/kajet/blob/main/default.conf
+[configuration file]: https://github.com/FreePlacki/kajet/blob/main/kajet.conf
 
 ## License
 
