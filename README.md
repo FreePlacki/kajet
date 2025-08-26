@@ -4,19 +4,22 @@ A mnimal infinite canvas drawing app
 
 ## Usage
 
-- `LMB` - drag to draw (hold `Shift` to draw a straight line)
-- `RMB` - drag to move the camera
-- `Scroll` - zoom in/out
-- `Ctrl+Scroll` - change thickness
-- `Left/Right` - cycle colors
-- `Ctrl+RMB` - drag to erase
-- `Ctrl+Z` - undo
-- `Ctrl+R/Ctrl+Y` - redo
-
-- `Ctrl+V` - paste an image from clipboard
-- `Ctrl+LMB` - select an image
-- `D/Delete` - remove selected images
-- `Ctrl+LMB` - drag to resize an image
+| Keybind | Action |
+| ------- | ------ |
+| `LMB`         | drag to draw (hold `Shift` to draw a straight line) |
+| `RMB`         | drag to move the camera |
+| `Scroll`      | zoom in/out |
+| `Ctrl+Scroll` | change thickness |
+| `Left/Right`  | cycle colors |
+| `Ctrl+RMB`    | drag to erase |
+| `Ctrl+Z`      | undo |
+| `Ctrl+Y`      | redo |
+| `Ctrl+V`      | paste an image from clipboard |
+| `Ctrl+LMB`    | select an image |
+| `D`           | remove selected images |
+| `LMB`         | drag to move an image |
+| `RMB`         | drag to resize an image |
+| `Up/Down`     | move an image up/down a layer |
 
 ## Configuration
 
