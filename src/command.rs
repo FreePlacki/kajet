@@ -1,10 +1,11 @@
 use std::collections::VecDeque;
+use std::fmt::Debug;
 
-use crate::{
-    graphics::{Eraser, Image, Line},
-    scene::Contents,
-};
+use tiny_skia::Point;
 
+use crate::graphics::{Contents, Eraser, Image, ImageId, Line};
+
+#[derive(Debug)]
 pub struct CommandInvoker {
     undos: VecDeque<Box<dyn Command>>,
     redos: VecDeque<Box<dyn Command>>,
@@ -49,11 +50,12 @@ impl CommandInvoker {
     }
 }
 
-pub trait Command {
+pub trait Command: Debug {
     fn execute(&mut self, contents: &mut Contents);
     fn undo(&mut self, contents: &mut Contents);
 }
 
+#[derive(Debug)]
 pub struct DrawLine {
     line: Line,
 }
@@ -74,6 +76,7 @@ impl Command for DrawLine {
     }
 }
 
+#[derive(Debug)]
 pub struct PasteImage {
     image: Image,
 }
@@ -94,6 +97,7 @@ impl Command for PasteImage {
     }
 }
 
+#[derive(Debug)]
 pub struct RemoveImage {
     image: Image,
 }
@@ -114,16 +118,17 @@ impl Command for RemoveImage {
     }
 }
 
+#[derive(Debug)]
 pub struct ResizeImage {
-    image: Image,
+    id: ImageId,
     start_scale: f32,
     end_scale: f32,
 }
 
 impl ResizeImage {
-    pub fn new(image: Image, start_scale: f32, end_scale: f32) -> Self {
+    pub fn new(id: ImageId, start_scale: f32, end_scale: f32) -> Self {
         Self {
-            image,
+            id,
             start_scale,
             end_scale,
         }
@@ -132,24 +137,50 @@ impl ResizeImage {
 
 impl Command for ResizeImage {
     fn execute(&mut self, contents: &mut Contents) {
-        for img in contents.images.iter_mut() {
-            if img.id == self.image.id {
-                img.scale = self.end_scale;
-                break;
-            }
+        if let Some(img) = contents.image(self.id) {
+            img.scale = self.end_scale;
         }
     }
 
     fn undo(&mut self, contents: &mut Contents) {
-        for img in contents.images.iter_mut() {
-            if img.id == self.image.id {
-                img.scale = self.start_scale;
-                break;
-            }
+        if let Some(img) = contents.image(self.id) {
+            img.scale = self.start_scale;
         }
     }
 }
 
+#[derive(Debug)]
+pub struct MoveImage {
+    id: ImageId,
+    start_pos: Point,
+    end_pos: Point,
+}
+
+impl MoveImage {
+    pub fn new(id: ImageId, start_pos: Point, end_pos: Point) -> Self {
+        Self {
+            id,
+            start_pos,
+            end_pos,
+        }
+    }
+}
+
+impl Command for MoveImage {
+    fn execute(&mut self, contents: &mut Contents) {
+        if let Some(img) = contents.image(self.id) {
+            img.pos = self.end_pos;
+        }
+    }
+
+    fn undo(&mut self, contents: &mut Contents) {
+        if let Some(img) = contents.image(self.id) {
+            img.pos = self.start_pos;
+        }
+    }
+}
+
+#[derive(Debug)]
 pub struct AddEraser {
     eraser: Eraser,
 }

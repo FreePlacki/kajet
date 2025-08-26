@@ -21,7 +21,7 @@ impl Canvas {
         }
     }
 
-    pub fn get_buffer(&self) -> Vec<u32> {
+    pub fn get_buffer(&self) -> Box<[u32]> {
         self.pixmap
             .data()
             .chunks(4)
@@ -34,7 +34,8 @@ impl Canvas {
                 }
             }))
             .map(|(base, overlay_opt)| overlay_opt.unwrap_or(base.0))
-            .collect()
+            .collect::<Vec<_>>()
+            .into_boxed_slice()
     }
 
     pub fn clear(&mut self) {

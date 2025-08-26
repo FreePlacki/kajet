@@ -5,6 +5,59 @@ use tiny_skia::{
 
 use crate::{camera::Camera, canvas::Canvas, config::Config};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ImageId(usize);
+pub struct Contents {
+    pub lines: Vec<Line>,
+    pub images: Vec<Image>,
+    pub erasers: Vec<Eraser>,
+    pub z: usize,
+    next_image_id: ImageId,
+}
+
+impl Contents {
+    pub fn new() -> Self {
+        Self {
+            lines: vec![],
+            images: vec![],
+            erasers: vec![],
+            z: 0,
+            next_image_id: ImageId(0),
+        }
+    }
+
+    pub fn next_image_id(&mut self) -> ImageId {
+        self.next_image_id.0 += 1;
+        ImageId(self.next_image_id.0 - 1)
+    }
+
+    pub fn image(&mut self, id: ImageId) -> Option<&mut Image> {
+        self.images.iter_mut().find(|i| i.id == id)
+    }
+
+    pub fn remove_image(&mut self, id: ImageId) -> Option<Image> {
+        let Some(index) = self.images.iter().position(|i| i.id == id) else {
+            return None;
+        };
+
+        Some(self.images.remove(index))
+    }
+
+    pub fn move_image_up(&mut self, id: ImageId) {
+        let max_z = self.z;
+
+        if let Some(img) = self.image(id) {
+            img.z = (img.z + 1).min(max_z);
+        }
+    }
+
+    pub fn move_image_down(&mut self, id: ImageId) {
+        if let Some(img) = self.image(id) {
+            img.z = img.z.saturating_sub(1);
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct Color(pub u32); // ARGB
 
@@ -30,6 +83,7 @@ pub trait Drawable {
     fn draw(&self, canvas: &mut Canvas, camera: &Camera);
 }
 
+#[derive(Debug)]
 pub struct FilledCircle {
     pub pos: Point,
     pub brush: Brush,
@@ -56,6 +110,7 @@ impl Drawable for FilledCircle {
     }
 }
 
+#[derive(Debug)]
 pub struct FilledRect {
     pub pos: Point,
     pub width: f32,
@@ -80,6 +135,7 @@ impl FilledRect {
     }
 }
 
+#[derive(Debug)]
 pub struct StraightLine {
     pub start: Point,
     pub end: Point,
@@ -193,14 +249,14 @@ impl Drawable for Line {
     }
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Image {
     pub pos: Point,
     pub pixmap: Pixmap,
     pub is_selected: bool,
     pub scale: f32,
-    pub id: usize,
-    z: usize,
+    pub id: ImageId,
+    pub z: usize,
     border_color: Color,
 }
 
@@ -209,7 +265,7 @@ impl Image {
         pos: Point,
         pixmap: Pixmap,
         scale: f32,
-        id: usize,
+        id: ImageId,
         z: usize,
         config: &Config,
     ) -> Self {
@@ -282,7 +338,7 @@ impl Drawable for Image {
     }
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Eraser {
     rect: Rect,
     color: Color,

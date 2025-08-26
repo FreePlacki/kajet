@@ -5,11 +5,9 @@ use crate::FPS;
 pub struct Camera {
     pub pos: Point,
     pub zoom: f32,
-
     zoom_interp: Interpolator,
     pos_x_interp: Interpolator,
     pos_y_interp: Interpolator,
-    is_panning: bool,
 }
 
 impl Camera {
@@ -25,21 +23,14 @@ impl Camera {
     }
 
     pub fn update_pos(&mut self, mouse: Point, prev_mouse: Option<Point>) {
-        if self.is_panning {
-            if let Some(prev_mouse) = prev_mouse {
-                let mut diff = prev_mouse - mouse;
-                diff.x /= self.zoom;
-                diff.y /= self.zoom;
-                let new_pos = self.pos + diff;
-                self.pos_x_interp = Interpolator::new(self.pos.x, new_pos.x, 0.0);
-                self.pos_y_interp = Interpolator::new(self.pos.y, new_pos.y, 0.0);
-            }
+        if let Some(prev_mouse) = prev_mouse {
+            let mut diff = prev_mouse - mouse;
+            diff.x /= self.zoom;
+            diff.y /= self.zoom;
+            let new_pos = self.pos + diff;
+            self.pos_x_interp = Interpolator::new(self.pos.x, new_pos.x, 0.0);
+            self.pos_y_interp = Interpolator::new(self.pos.y, new_pos.y, 0.0);
         }
-        self.is_panning = true;
-    }
-
-    pub fn end_panning(&mut self) {
-        self.is_panning = false;
     }
 
     pub fn update(&mut self, mouse: Option<Point>) -> bool {
@@ -83,7 +74,6 @@ impl Default for Camera {
             zoom_interp: Interpolator::new(1.0, 1.0, 0.0),
             pos_x_interp: Interpolator::new(0.0, 0.0, 0.0),
             pos_y_interp: Interpolator::new(0.0, 0.0, 0.0),
-            is_panning: false,
         }
     }
 }
