@@ -1,63 +1,63 @@
-use arboard::ImageData;
-use minifb::{CursorStyle, Key, MouseButton, Window};
-use tiny_skia::{IntSize, Pixmap, Point};
+use std::ffi::c_void;
 
+use arboard::ImageData;
+use raylib::ffi;
+use raylib::{
+    RaylibHandle, RaylibThread,
+    ffi::{KeyboardKey, MouseButton, MouseCursor},
+    math::{Rectangle, Vector2},
+    prelude::RaylibDraw,
+    texture,
+};
+
+use crate::camera::CameraCanvasCoords;
+use crate::graphics::{Brush, FilledCircle, StraightLine};
 use crate::{
     command::{self, AddEraser, DrawLine},
-    graphics::{
-        Brush, Drawable, Eraser, FilledCircle, FilledRect, Image, ImageId, Line, StraightLine,
-    },
+    graphics::{Drawable, Eraser, FilledRect, Image, ImageId, Line},
     input::Action,
     scene::SceneData,
 };
 
 pub trait StateHandler {
-    fn on_enter(&mut self, _data: &mut SceneData, _window: &mut Window) {}
-    fn on_exit(&mut self, _data: &mut SceneData, _window: &mut Window) {}
+    fn on_enter(&mut self, _data: &mut SceneData, _rl: &mut RaylibHandle) {}
+    fn on_exit(&mut self, _data: &mut SceneData, _rl: &mut RaylibHandle) {}
 
-    fn step(&mut self, data: &mut SceneData, window: &Window) -> Transition;
+    fn step(
+        &mut self,
+        data: &mut SceneData,
+        thread: &RaylibThread,
+        rl: &mut RaylibHandle,
+    ) -> Transition;
 
-    fn draw(&self, data: &mut SceneData, window: &mut Window) {
-        // TODO: consider different draw implementation for each state
+    fn draw(&self, data: &mut SceneData, thread: &RaylibThread, rl: &mut RaylibHandle) {
+        data.camera
+            .update(rl.get_mouse_position(), rl.get_frame_time());
 
-        data.redraw |= data.camera.update(data.mouse);
+        // DO NOT USE RaylibHandle::draw as it results in some input being dropped!
+        let mut d = rl.begin_drawing(thread);
+        d.clear_background(data.config.background);
 
-        if data.redraw {
-            data.canvas.clear();
+        let mut combined = Vec::<&dyn Drawable>::new();
+        combined.extend(data.contents.images.iter().map(|i| i as &dyn Drawable));
+        combined.extend(data.contents.lines.iter().map(|i| i as &dyn Drawable));
+        combined.extend(data.contents.erasers.iter().map(|i| i as &dyn Drawable));
+        combined.sort_by_key(|i| i.z());
+        combined.extend(data.contents.overlay.iter().map(|i| &**i as &dyn Drawable));
+        combined.iter().for_each(|i| i.draw(&mut d, &data.camera));
 
-            let mut combined = Vec::<&dyn Drawable>::new();
-            combined.extend(data.contents.images.iter().map(|i| i as &dyn Drawable));
-            combined.extend(data.contents.lines.iter().map(|i| i as &dyn Drawable));
-            combined.extend(data.contents.erasers.iter().map(|i| i as &dyn Drawable));
-            combined.sort_by_key(|i| i.z());
-            combined
-                .iter()
-                .for_each(|i| i.draw(&mut data.canvas, &data.camera));
-        } else if let Some(line) = data.contents.lines.last() {
-            if line.points.len() >= 2 && !line.finished {
-                let mut l = Line::new(line.points[line.points.len() - 2], line.brush, line.z());
-                l.points.push(line.points[line.points.len() - 1]);
-                l.draw(&mut data.canvas, &data.camera);
-            }
-        }
-
-        window
-            .update_with_buffer(
-                &data.canvas.get_buffer(),
-                data.canvas.width as usize,
-                data.canvas.height as usize,
-            )
-            .unwrap();
+        d.draw_fps(50, 50);
     }
 }
 
 pub struct Idle;
 struct Drawing;
+struct DrawingStraight;
 struct MovingCanvas;
 struct ModifyingImage(ImageId);
 struct MovingImage {
     id: ImageId,
-    start_pos: Point,
+    start_pos: Vector2,
 }
 struct ResizingImage {
     id: ImageId,
@@ -80,91 +80,110 @@ pub enum Transition {
 }
 
 impl Idle {
-    fn try_paste_image(&self, data: &mut SceneData, image_data: ImageData) {
-        let img = Pixmap::from_vec(
-            image_data.bytes.to_vec(),
-            IntSize::from_wh(image_data.width as u32, image_data.height as u32).unwrap(),
-        );
+    fn image_from_arboard(data: &arboard::ImageData) -> texture::Image {
+        let mut rl_image = ffi::Image {
+            data: data.bytes.as_ptr() as *mut c_void,
+            width: data.width as i32,
+            height: data.height as i32,
+            mipmaps: 1,
+            format: ffi::PixelFormat::PIXELFORMAT_UNCOMPRESSED_R8G8B8A8 as i32,
+        };
 
-        if let Some(img) = img {
-            let pos = {
-                if let Some(m) = data.mouse {
-                    Point::from_xy(
-                        m.x - image_data.width as f32 / 2.0,
-                        m.y - image_data.height as f32 / 2.0,
-                    )
-                } else {
-                    data.camera.pos
-                }
-            };
-            let pos = data.camera.to_camera_coords((pos.x as u32, pos.y as u32));
-            data.contents.z += 1;
-            let image = Image::new(
-                pos,
-                img,
-                1.0 / data.camera.zoom,
-                data.contents.next_image_id(),
-                data.contents.z,
-                &data.config,
-            );
-            image.draw(&mut data.canvas, &data.camera);
-            data.contents.images.push(image.clone());
-            data.command_invoker.push(command::PasteImage::new(image));
-        }
+        // SAFETY: We must clone the pixel buffer so that `rl_image` owns it
+        // Raylib expects to be able to free this memory later
+        let owned = data.bytes.clone();
+        rl_image.data = owned.as_ptr() as *mut c_void;
+        std::mem::forget(owned);
+
+        unsafe { texture::Image::from_raw(rl_image) }
+    }
+    fn try_paste_image(
+        &self,
+        data: &mut SceneData,
+        thread: &RaylibThread,
+        rl: &mut RaylibHandle,
+        image_data: ImageData,
+    ) {
+        let rl_image = Self::image_from_arboard(&image_data);
+
+        let Ok(texture) = rl.load_texture_from_image(thread, &rl_image) else {
+            return;
+        };
+
+        let mouse = rl.get_mouse_position();
+        let pos = Vector2::new(
+            mouse.x - image_data.width as f32 / 2.0,
+            mouse.y - image_data.height as f32 / 2.0,
+        )
+        .to_canvas_coords(&data.camera);
+        data.contents.z += 1;
+        let image = Image::new(
+            pos,
+            texture,
+            1.0 / data.camera.zoom,
+            data.contents.next_image_id(),
+            data.contents.z,
+            &data.config,
+        );
+        data.contents.images.push(image.clone());
+        data.command_invoker.push(command::PasteImage::new(image));
     }
 }
 
 impl StateHandler for Idle {
-    fn on_enter(&mut self, _data: &mut SceneData, window: &mut Window) {
-        window.set_cursor_visibility(false);
+    fn on_enter(&mut self, _data: &mut SceneData, rl: &mut RaylibHandle) {
+        rl.hide_cursor();
     }
 
-    fn step(&mut self, data: &mut SceneData, window: &Window) -> Transition {
-        if let Some(mouse) = data.mouse {
-            let cursor = FilledCircle {
-                pos: mouse,
-                brush: Brush {
-                    color: data.brush.color,
-                    thickness: data.brush.thickness * data.camera.zoom,
-                },
-            };
-            cursor.draw(&mut data.canvas, &data.camera);
-        }
+    fn step(
+        &mut self,
+        data: &mut SceneData,
+        thread: &RaylibThread,
+        rl: &mut RaylibHandle,
+    ) -> Transition {
+        data.contents.overlay.push(Box::new(FilledCircle {
+            pos: rl.get_mouse_position(),
+            brush: Brush {
+                color: data.brush.color,
+                thickness: data.brush.thickness.to_camera_coords(&data.camera),
+            },
+        }));
 
-        if window.get_mouse_down(MouseButton::Left) {
-            if window.is_key_down(Key::LeftCtrl) {
-                if let Some(id) = data.image_under_cursor() {
+        if rl.is_mouse_button_down(MouseButton::MOUSE_BUTTON_LEFT) {
+            if rl.is_key_down(KeyboardKey::KEY_LEFT_CONTROL) {
+                if let Some(id) = data.image_under_cursor(rl.get_mouse_position()) {
                     return Transition::Switch(Box::new(ModifyingImage(id)));
                 }
             }
             return Transition::Switch(Box::new(Drawing));
         }
 
-        if window.get_mouse_down(MouseButton::Right) {
-            if window.is_key_down(Key::LeftCtrl) {
+        if rl.is_mouse_button_down(MouseButton::MOUSE_BUTTON_RIGHT) {
+            if rl.is_key_down(KeyboardKey::KEY_LEFT_CONTROL) {
                 return Transition::Switch(Box::new(Erasing::new()));
             }
 
             return Transition::Switch(Box::new(MovingCanvas));
         }
 
-        if let Some((_scroll_x, scroll_y)) = window.get_scroll_wheel() {
-            if window.is_key_down(Key::LeftCtrl) {
-                data.update_thickness(scroll_y);
+        let scroll = rl.get_mouse_wheel_move_v();
+        if scroll.y != 0.0 {
+            if rl.is_key_down(KeyboardKey::KEY_LEFT_CONTROL) {
+                data.update_thickness(scroll.y);
             } else {
-                data.update_zoom(scroll_y);
+                data.update_zoom(scroll.y);
             }
         }
 
-        match data.input_handler.interpret(window) {
-            Action::Undo => data.undo(),
-            Action::Redo => data.redo(),
+        match data.input_handler.interpret(rl) {
+            Action::Undo => data.command_invoker.undo(&mut data.contents),
+            Action::Redo => data.command_invoker.redo(&mut data.contents),
             Action::NextColor => data.update_color(true),
             Action::PrevColor => data.update_color(false),
             Action::Paste => {
                 if let Some(ref mut clipboard) = data.clipboard {
                     if let Ok(image_data) = clipboard.get_image() {
-                        self.try_paste_image(data, image_data);
+                        self.try_paste_image(data, thread, rl, image_data);
                     }
                 }
             }
@@ -176,64 +195,53 @@ impl StateHandler for Idle {
 }
 
 impl StateHandler for Drawing {
-    fn on_enter(&mut self, _data: &mut SceneData, window: &mut Window) {
-        window.set_cursor_visibility(false);
+    fn on_enter(&mut self, _data: &mut SceneData, rl: &mut RaylibHandle) {
+        rl.hide_cursor();
     }
 
-    fn on_exit(&mut self, data: &mut SceneData, _window: &mut Window) {
+    fn on_exit(&mut self, data: &mut SceneData, rl: &mut RaylibHandle) {
         if let Some(last) = data.contents.lines.last_mut() {
             last.finished = true;
             // to draw the rest when holding shift
-            if let Some(mouse) = data.mouse {
-                last.points.push(
-                    data.camera
-                        .to_camera_coords((mouse.x as u32, mouse.y as u32)),
-                );
-                data.redraw = true;
-            }
+            let mouse = rl.get_mouse_position();
+            last.points.push(mouse.to_canvas_coords(&data.camera));
             let cmd = DrawLine::new(data.contents.lines.last().unwrap().clone());
             data.command_invoker.push(cmd);
         }
     }
 
-    fn step(&mut self, data: &mut SceneData, window: &Window) -> Transition {
-        if !window.get_mouse_down(MouseButton::Left) {
+    fn step(
+        &mut self,
+        data: &mut SceneData,
+        _thread: &RaylibThread,
+        rl: &mut RaylibHandle,
+    ) -> Transition {
+        if !rl.is_mouse_button_down(MouseButton::MOUSE_BUTTON_LEFT) {
             return Transition::Switch(Box::new(Idle));
         }
 
-        let Some(mouse) = data.mouse else {
-            return Transition::Switch(Box::new(Idle));
-        };
-
-        let pos = data
-            .camera
-            .to_camera_coords((mouse.x as u32, mouse.y as u32));
-
-        FilledCircle {
-            pos: mouse,
+        data.contents.overlay.push(Box::new(FilledCircle {
+            pos: rl.get_mouse_position(),
             brush: Brush {
                 color: data.brush.color,
                 thickness: data.brush.thickness * data.camera.zoom,
             },
-        }
-        .draw(&mut data.canvas, &data.camera);
+        }));
 
+        if rl.is_key_down(KeyboardKey::KEY_LEFT_SHIFT) {
+            return Transition::Switch(Box::new(DrawingStraight));
+        }
+
+        let pos = rl.get_mouse_position().to_canvas_coords(&data.camera);
         if let Some(line) = data.contents.lines.last_mut() {
             if line.finished {
                 data.contents
                     .lines
                     .push(Line::new(pos, data.brush, data.contents.z));
-            } else if !window.is_key_down(Key::LeftShift)
-                && line.points.last().unwrap().distance(pos) >= 5.0 / data.camera.zoom
+            } else if line.points.last().unwrap().distance_to(pos)
+                >= 5.0f32.to_canvas_coords(&data.camera)
             {
                 line.points.push(pos);
-            } else {
-                StraightLine {
-                    start: *line.points.last().unwrap(),
-                    end: pos,
-                    brush: data.brush,
-                }
-                .draw(&mut data.canvas, &data.camera);
             }
         } else {
             data.contents
@@ -245,76 +253,130 @@ impl StateHandler for Drawing {
     }
 }
 
-impl StateHandler for MovingCanvas {
-    fn on_enter(&mut self, _data: &mut SceneData, window: &mut Window) {
-        window.set_cursor_visibility(true);
-        window.set_cursor_style(minifb::CursorStyle::ClosedHand);
+impl StateHandler for DrawingStraight {
+    fn on_enter(&mut self, data: &mut SceneData, rl: &mut RaylibHandle) {
+        let pos = rl.get_mouse_position().to_canvas_coords(&data.camera);
+
+        data.contents
+            .lines
+            .push(Line::new(pos, data.brush, data.contents.z));
     }
 
-    fn step(&mut self, data: &mut SceneData, window: &Window) -> Transition {
-        if !window.get_mouse_down(MouseButton::Right) {
+    fn on_exit(&mut self, data: &mut SceneData, rl: &mut RaylibHandle) {
+        let pos = rl.get_mouse_position().to_canvas_coords(&data.camera);
+
+        let line =
+            data.contents.lines.last_mut().expect(
+                "There should be a line already when exiting the straight line drawing state.",
+            );
+        line.points.push(pos);
+        line.finished = true;
+
+        let cmd = DrawLine::new(data.contents.lines.last().unwrap().clone());
+        data.command_invoker.push(cmd);
+    }
+
+    fn step(
+        &mut self,
+        data: &mut SceneData,
+        _thread: &RaylibThread,
+        rl: &mut RaylibHandle,
+    ) -> Transition {
+        if !rl.is_key_down(KeyboardKey::KEY_LEFT_SHIFT) {
+            if rl.is_mouse_button_down(MouseButton::MOUSE_BUTTON_LEFT) {
+                return Transition::Switch(Box::new(Drawing));
+            }
+            return Transition::Switch(Box::new(Idle));
+        }
+        if !rl.is_mouse_button_down(MouseButton::MOUSE_BUTTON_LEFT) {
             return Transition::Switch(Box::new(Idle));
         }
 
-        if let Some(mouse) = data.mouse {
-            data.camera.update_pos(mouse, data.prev_mouse);
+        if let Some(line) = data.contents.lines.last() {
+            let pos = rl.get_mouse_position().to_canvas_coords(&data.camera);
+
+            data.contents.overlay.push(Box::new(StraightLine {
+                start: *line.points.last().unwrap(),
+                end: pos,
+                brush: data.brush,
+            }));
         }
 
         Transition::Stay
     }
 }
 
-impl StateHandler for Erasing {
-    fn on_enter(&mut self, data: &mut SceneData, window: &mut Window) {
-        window.set_cursor_visibility(true);
-        window.set_cursor_style(CursorStyle::Arrow);
+impl StateHandler for MovingCanvas {
+    fn on_enter(&mut self, _data: &mut SceneData, rl: &mut RaylibHandle) {
+        rl.show_cursor();
+        rl.set_mouse_cursor(MouseCursor::MOUSE_CURSOR_POINTING_HAND);
+    }
 
+    fn step(
+        &mut self,
+        data: &mut SceneData,
+        _thread: &RaylibThread,
+        rl: &mut RaylibHandle,
+    ) -> Transition {
+        if !rl.is_mouse_button_down(MouseButton::MOUSE_BUTTON_RIGHT) {
+            return Transition::Switch(Box::new(Idle));
+        }
+
+        data.camera.update_pos(rl.get_mouse_delta());
+
+        Transition::Stay
+    }
+}
+
+impl StateHandler for Erasing {
+    fn on_enter(&mut self, data: &mut SceneData, rl: &mut RaylibHandle) {
+        rl.show_cursor();
+        rl.set_mouse_cursor(MouseCursor::MOUSE_CURSOR_ARROW);
+
+        let start = rl.get_mouse_position().to_canvas_coords(&data.camera);
         self.eraser = Some(FilledRect {
-            pos: data
-                .mouse
-                .expect("Mouse should be available when entering the Erasing state"),
-            width: 0.0,
-            height: 0.0,
+            rect: Rectangle::new(start.x, start.y, 0.0, 0.0),
             color: data.config.background,
         });
     }
 
-    fn on_exit(&mut self, data: &mut SceneData, _window: &mut Window) {
+    fn on_exit(&mut self, data: &mut SceneData, _rl: &mut RaylibHandle) {
         if let Some(eraser) = &self.eraser {
-            let pos = data
-                .camera
-                .to_camera_coords((eraser.pos.x as u32, eraser.pos.y as u32));
-            let rect = FilledRect {
-                pos,
-                width: eraser.width / data.camera.zoom,
-                height: eraser.height / data.camera.zoom,
-                color: eraser.color,
-            }
-            .to_skia();
+            let rect = Rectangle::new(
+                eraser.rect.x,
+                eraser.rect.y,
+                eraser.rect.width,
+                eraser.rect.height,
+            );
 
             data.contents
                 .erasers
                 .push(Eraser::new(rect, eraser.color, data.contents.z));
             data.contents.z += 1;
-            data.redraw = true;
             data.command_invoker.push(AddEraser::new(
                 data.contents.erasers.last().unwrap().clone(),
             ));
         }
     }
 
-    fn step(&mut self, data: &mut SceneData, window: &Window) -> Transition {
-        if !window.is_key_down(Key::LeftCtrl) || !window.get_mouse_down(MouseButton::Right) {
+    fn step(
+        &mut self,
+        data: &mut SceneData,
+        _thread: &RaylibThread,
+        rl: &mut RaylibHandle,
+    ) -> Transition {
+        if !rl.is_key_down(KeyboardKey::KEY_LEFT_CONTROL)
+            || !rl.is_mouse_button_down(MouseButton::MOUSE_BUTTON_RIGHT)
+        {
             return Transition::Switch(Box::new(Idle));
         }
 
         if let Some(eraser) = self.eraser.as_mut() {
-            if let (Some(m), Some(pm)) = (data.mouse, data.prev_mouse) {
-                eraser.width += m.x - pm.x;
-                eraser.height += m.y - pm.y;
-            }
+            let d = rl.get_mouse_delta();
+            eraser.rect.width += d.x;
+            eraser.rect.height += d.y;
 
-            eraser.draw(&mut data.canvas, &data.camera);
+            data.contents.overlay.push(Box::new(*eraser));
         }
 
         Transition::Stay
@@ -322,63 +384,64 @@ impl StateHandler for Erasing {
 }
 
 impl StateHandler for ModifyingImage {
-    fn on_enter(&mut self, data: &mut SceneData, window: &mut Window) {
+    fn on_enter(&mut self, data: &mut SceneData, rl: &mut RaylibHandle) {
         data.contents
             .image(self.0)
             .expect("In modifying image state an image with provided id should exist")
             .is_selected = true;
-        data.redraw = true;
 
-        window.set_cursor_visibility(true);
-        window.set_cursor_style(CursorStyle::Arrow);
+        rl.show_cursor();
+        rl.set_mouse_cursor(MouseCursor::MOUSE_CURSOR_ARROW);
     }
 
-    fn on_exit(&mut self, data: &mut SceneData, _window: &mut Window) {
+    fn on_exit(&mut self, data: &mut SceneData, _rl: &mut RaylibHandle) {
         let Some(img) = data.contents.image(self.0) else {
             return;
         };
 
         img.is_selected = false;
-        data.redraw = true;
     }
 
-    fn step(&mut self, data: &mut SceneData, window: &Window) -> Transition {
-        if window.get_mouse_down(MouseButton::Left) {
-            if data.image_under_cursor() != Some(self.0) {
+    fn step(
+        &mut self,
+        data: &mut SceneData,
+        _thread: &RaylibThread,
+        rl: &mut RaylibHandle,
+    ) -> Transition {
+        if rl.is_mouse_button_down(MouseButton::MOUSE_BUTTON_LEFT) {
+            if data.image_under_cursor(rl.get_mouse_position()) != Some(self.0) {
                 return Transition::Switch(Box::new(Idle));
             }
             return Transition::Switch(Box::new(MovingImage::new(self.0)));
         }
 
-        if window.get_mouse_down(MouseButton::Right) {
-            if data.image_under_cursor() != Some(self.0) {
+        if rl.is_mouse_button_down(MouseButton::MOUSE_BUTTON_RIGHT) {
+            if data.image_under_cursor(rl.get_mouse_position()) != Some(self.0) {
                 return Transition::Switch(Box::new(Idle));
             }
             return Transition::Switch(Box::new(ResizingImage::new(self.0)));
         }
 
-        if let Some((_scroll_x, scroll_y)) = window.get_scroll_wheel() {
-            if !window.is_key_down(Key::LeftCtrl) {
-                data.update_zoom(scroll_y);
+        let scroll = rl.get_mouse_wheel_move_v();
+        if scroll.y != 0.0 {
+            if !rl.is_key_down(KeyboardKey::KEY_LEFT_CONTROL) {
+                data.update_zoom(scroll.y);
             }
         }
 
-        match data.input_handler.interpret(window) {
+        match data.input_handler.interpret(rl) {
             Action::Remove => {
                 let mut img = data.contents.remove_image(self.0).unwrap();
                 img.is_selected = false;
                 data.command_invoker.push(command::RemoveImage::new(img));
-                data.redraw = true;
 
                 return Transition::Switch(Box::new(Idle));
             }
             Action::UpLayer => {
                 data.contents.move_image_up(self.0);
-                data.redraw = true;
             }
             Action::DownLayer => {
                 data.contents.move_image_down(self.0);
-                data.redraw = true;
             }
             Action::None => {}
             _ => {
@@ -402,9 +465,9 @@ impl ResizingImage {
 }
 
 impl StateHandler for ResizingImage {
-    fn on_enter(&mut self, data: &mut SceneData, window: &mut Window) {
-        window.set_cursor_visibility(true);
-        window.set_cursor_style(CursorStyle::ResizeAll);
+    fn on_enter(&mut self, data: &mut SceneData, rl: &mut RaylibHandle) {
+        rl.show_cursor();
+        rl.set_mouse_cursor(MouseCursor::MOUSE_CURSOR_RESIZE_NWSE);
         let img = data
             .contents
             .image(self.id)
@@ -412,7 +475,7 @@ impl StateHandler for ResizingImage {
         self.start_scale = img.scale;
     }
 
-    fn on_exit(&mut self, data: &mut SceneData, _window: &mut Window) {
+    fn on_exit(&mut self, data: &mut SceneData, _window: &mut RaylibHandle) {
         let img = data
             .contents
             .image(self.id)
@@ -425,23 +488,24 @@ impl StateHandler for ResizingImage {
         ));
     }
 
-    fn step(&mut self, data: &mut SceneData, window: &Window) -> Transition {
-        if !window.get_mouse_down(MouseButton::Right) {
+    fn step(
+        &mut self,
+        data: &mut SceneData,
+        _thread: &RaylibThread,
+        rl: &mut RaylibHandle,
+    ) -> Transition {
+        if !rl.is_mouse_button_down(MouseButton::MOUSE_BUTTON_RIGHT) {
             return Transition::Switch(Box::new(ModifyingImage(self.id)));
         }
 
-        if let (Some(m), Some(pm)) = (data.mouse, data.prev_mouse) {
-            let img = data
-                .contents
-                .image(self.id)
-                .expect("Image id should be correct when in resizing state");
-            let d = m - pm;
-            let sx = d.x / img.width() / data.camera.zoom;
-            let sy = d.y / img.height() / data.camera.zoom;
-            img.scale *= 1.0 + if sx.abs() > sy.abs() { sx } else { sy };
-        }
-
-        data.redraw = true;
+        let img = data
+            .contents
+            .image(self.id)
+            .expect("Image id should be correct when in resizing state");
+        let d = rl.get_mouse_delta();
+        let sx = d.x / img.width().to_camera_coords(&data.camera);
+        let sy = d.y / img.height().to_camera_coords(&data.camera);
+        img.scale *= 1.0 + if sx.abs() > sy.abs() { sx } else { sy };
 
         Transition::Stay
     }
@@ -451,13 +515,13 @@ impl MovingImage {
     pub fn new(id: ImageId) -> Self {
         Self {
             id,
-            start_pos: Point::default(),
+            start_pos: Vector2::default(),
         }
     }
 }
 
 impl StateHandler for MovingImage {
-    fn on_enter(&mut self, data: &mut SceneData, _window: &mut Window) {
+    fn on_enter(&mut self, data: &mut SceneData, _rl: &mut RaylibHandle) {
         self.start_pos = data
             .contents
             .image(self.id)
@@ -465,35 +529,34 @@ impl StateHandler for MovingImage {
             .pos;
     }
 
-    fn on_exit(&mut self, data: &mut SceneData, _window: &mut Window) {
+    fn on_exit(&mut self, data: &mut SceneData, _rl: &mut RaylibHandle) {
         let img = data
             .contents
             .image(self.id)
             .expect("Image id should be correct when exiting moving state");
 
-        if self.start_pos.distance(img.pos) * data.camera.zoom > 10.0 {
+        if self.start_pos.distance_to(img.pos) > 10.0f32.to_canvas_coords(&data.camera) {
             data.command_invoker
                 .push(command::MoveImage::new(self.id, self.start_pos, img.pos));
         }
     }
 
-    fn step(&mut self, data: &mut SceneData, window: &Window) -> Transition {
-        if !window.get_mouse_down(MouseButton::Left) {
+    fn step(
+        &mut self,
+        data: &mut SceneData,
+        _thread: &RaylibThread,
+        rl: &mut RaylibHandle,
+    ) -> Transition {
+        if !rl.is_mouse_button_down(MouseButton::MOUSE_BUTTON_LEFT) {
             return Transition::Switch(Box::new(ModifyingImage(self.id)));
         }
 
-        if let (Some(mouse), Some(prev_mouse)) = (data.mouse, data.prev_mouse) {
-            let img = data
-                .contents
-                .image(self.id)
-                .expect("Image id should be correct when in moving state");
-            img.pos += Point::from_xy(
-                (mouse.x - prev_mouse.x) / data.camera.zoom,
-                (mouse.y - prev_mouse.y) / data.camera.zoom,
-            );
-        }
+        let img = data
+            .contents
+            .image(self.id)
+            .expect("Image id should be correct when in moving state");
+        img.pos += rl.get_mouse_delta() / data.camera.zoom;
 
-        data.redraw = true;
         Transition::Stay
     }
 }

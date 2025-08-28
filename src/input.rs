@@ -1,6 +1,6 @@
-use std::{collections::HashSet, rc::Rc};
+use std::rc::Rc;
 
-use minifb::{Key, KeyRepeat, Window};
+use raylib::{RaylibHandle, ffi::KeyboardKey};
 
 use crate::config::Config;
 
@@ -19,18 +19,18 @@ pub enum Action {
 
 #[derive(Debug)]
 pub struct Keybind {
-    keys: Box<[Box<[Key]>]>,
+    keys: Box<[Box<[KeyboardKey]>]>,
     action: Action,
 }
 
 impl Keybind {
-    pub fn new(keys: Box<[Box<[Key]>]>, action: Action) -> Self {
+    pub fn new(keys: Box<[Box<[KeyboardKey]>]>, action: Action) -> Self {
         Self { keys, action }
     }
-    pub fn action(&self, down: &HashSet<Key>, pressed: Key) -> Option<Action> {
+    pub fn action(&self, rl: &RaylibHandle) -> Option<Action> {
         for combo in &self.keys {
             if let Some((&last, rest)) = combo.split_last() {
-                if pressed == last && rest.iter().all(|k| down.contains(k)) {
+                if rl.is_key_pressed(last) && rest.iter().all(|&k| rl.is_key_down(k)) {
                     return Some(self.action);
                 }
             }
@@ -49,17 +49,12 @@ impl InputHandler {
         Self { config }
     }
 
-    pub fn interpret(&self, window: &Window) -> Action {
-        if let Some(&pressed) = window.get_keys_pressed(KeyRepeat::Yes).first() {
-            let down = window.get_keys().into_iter().collect();
-            for keybind in &self.config.keybinds {
-                if let Some(action) = keybind.action(&down, pressed) {
-                    return action;
-                }
+    pub fn interpret(&self, rl: &RaylibHandle) -> Action {
+        for keybind in &self.config.keybinds {
+            if let Some(action) = keybind.action(rl) {
+                return action;
             }
-            Action::None
-        } else {
-            Action::None
         }
+        Action::None
     }
 }

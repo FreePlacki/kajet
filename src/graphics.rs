@@ -1,13 +1,21 @@
-use tiny_skia::{
-    FillRule, LineCap, LineJoin, Paint, PathBuilder, Pixmap, PixmapPaint, Point, Rect, Stroke,
-    Transform,
+use std::rc::Rc;
+
+use raylib::{
+    color::Color,
+    math::{Rectangle, Vector2},
+    prelude::{RaylibDraw, RaylibDrawHandle},
+    texture::Texture2D,
 };
 
-use crate::{camera::Camera, canvas::Canvas, config::Config};
+use crate::{
+    camera::{Camera, CameraCanvasCoords},
+    config::Config,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ImageId(usize);
 pub struct Contents {
+    pub overlay: Vec<Box<dyn Drawable>>,
     pub lines: Vec<Line>,
     pub images: Vec<Image>,
     pub erasers: Vec<Eraser>,
@@ -18,6 +26,7 @@ pub struct Contents {
 impl Contents {
     pub fn new() -> Self {
         Self {
+            overlay: vec![],
             lines: vec![],
             images: vec![],
             erasers: vec![],
@@ -59,20 +68,6 @@ impl Contents {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct Color(pub u32); // ARGB
-
-impl Color {
-    pub fn from_rgba(color: &[u8]) -> Self {
-        Self(u32::from_be_bytes([color[3], color[0], color[1], color[2]]))
-    }
-
-    pub fn to_skia(self) -> tiny_skia::Color {
-        let bytes = self.0.to_be_bytes();
-        tiny_skia::Color::from_rgba8(bytes[1], bytes[2], bytes[3], bytes[0])
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
 pub struct Brush {
     pub color: Color,
     pub thickness: f32,
@@ -80,12 +75,12 @@ pub struct Brush {
 
 pub trait Drawable {
     fn z(&self) -> usize;
-    fn draw(&self, canvas: &mut Canvas, camera: &Camera);
+    fn draw(&self, d: &mut RaylibDrawHandle, camera: &Camera);
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct FilledCircle {
-    pub pos: Point,
+    pub pos: Vector2,
     pub brush: Brush,
 }
 
@@ -94,51 +89,47 @@ impl Drawable for FilledCircle {
         0
     }
 
-    fn draw(&self, canvas: &mut Canvas, _: &Camera) {
+    fn draw(&self, d: &mut RaylibDrawHandle, _: &Camera) {
         let r = (self.brush.thickness / 2.0).max(1.0);
 
-        let path = PathBuilder::from_circle(self.pos.x, self.pos.y, r).unwrap();
-        let mut paint = Paint::default();
-        paint.set_color(self.brush.color.to_skia());
-        canvas.overlay.fill_path(
-            &path,
-            &paint,
-            FillRule::Winding,
-            Transform::identity(),
-            None,
-        );
+        d.draw_circle(self.pos.x as i32, self.pos.y as i32, r, self.brush.color);
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct FilledRect {
-    pub pos: Point,
-    pub width: f32,
-    pub height: f32,
+    pub rect: Rectangle,
     pub color: Color,
 }
 
-impl FilledRect {
-    pub fn to_skia(&self) -> Rect {
-        let x_start = if self.width < 0.0 {
-            self.pos.x + self.width
-        } else {
-            self.pos.x
-        };
-        let y_start = if self.height < 0.0 {
-            self.pos.y + self.height
-        } else {
-            self.pos.y
-        };
+impl Drawable for FilledRect {
+    fn z(&self) -> usize {
+        0
+    }
 
-        Rect::from_xywh(x_start, y_start, self.width.abs(), self.height.abs()).unwrap()
+    fn draw(&self, d: &mut RaylibDrawHandle, camera: &Camera) {
+        let Vector2 { mut x, mut y } =
+            Vector2::new(self.rect.x, self.rect.y).to_camera_coords(camera);
+        let mut w = self.rect.width.to_camera_coords(camera);
+        let mut h = self.rect.height.to_camera_coords(camera);
+
+        if w < 0.0 {
+            x += w;
+            w = -w;
+        }
+        if h < 0.0 {
+            y += h;
+            h = -h;
+        }
+
+        d.draw_rectangle(x as i32, y as i32, w as i32, h as i32, self.color);
     }
 }
 
 #[derive(Debug)]
 pub struct StraightLine {
-    pub start: Point,
-    pub end: Point,
+    pub start: Vector2,
+    pub end: Vector2,
     pub brush: Brush,
 }
 
@@ -147,63 +138,63 @@ impl Drawable for StraightLine {
         0
     }
 
-    fn draw(&self, canvas: &mut Canvas, camera: &Camera) {
-        let mut pb = PathBuilder::new();
-        pb.move_to(self.start.x, self.start.y);
-        pb.line_to(self.end.x, self.end.y);
-        let path = pb.finish().unwrap();
-
-        let mut paint = Paint::default();
-        paint.set_color(self.brush.color.to_skia());
-
-        let stroke = Stroke {
-            width: self.brush.thickness,
-            line_cap: LineCap::Round,
-            line_join: LineJoin::Round,
-            ..Default::default()
-        };
-
-        canvas.overlay.stroke_path(
-            &path,
-            &paint,
-            &stroke,
-            Transform::from_translate(-camera.pos.x, -camera.pos.y)
-                .post_scale(camera.zoom, camera.zoom),
-            None,
+    fn draw(&self, d: &mut RaylibDrawHandle, camera: &Camera) {
+        d.draw_line_ex(
+            self.start.to_camera_coords(camera),
+            self.end.to_camera_coords(camera),
+            self.brush.thickness.to_camera_coords(camera),
+            self.brush.color,
         );
-    }
-}
-
-impl Drawable for FilledRect {
-    fn z(&self) -> usize {
-        0
-    }
-
-    fn draw(&self, canvas: &mut Canvas, _: &Camera) {
-        let rect = self.to_skia();
-        let mut paint = Paint::default();
-        paint.set_color(self.color.to_skia());
-        canvas
-            .overlay
-            .fill_rect(rect, &paint, Transform::identity(), None);
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct Line {
-    pub points: Vec<Point>,
+    pub points: Vec<Vector2>,
     pub finished: bool,
     pub brush: Brush,
     z: usize,
 }
 
 impl Line {
-    pub fn new(start: Point, brush: Brush, z: usize) -> Self {
+    pub fn new(start: Vector2, brush: Brush, z: usize) -> Self {
         Self {
             points: vec![start],
             finished: false,
             brush,
             z,
+        }
+    }
+
+    fn draw_longer(&self, d: &mut RaylibDrawHandle, camera: &Camera) {
+        assert!(self.points.len() >= 4);
+
+        let pts = &self
+            .points
+            .iter()
+            .map(|p| p.to_camera_coords(camera))
+            .collect::<Box<_>>();
+        d.draw_spline_catmull_rom(
+            pts,
+            self.brush.thickness.to_camera_coords(camera),
+            self.brush.color,
+        );
+    }
+
+    fn draw_shorter(&self, d: &mut RaylibDrawHandle, camera: &Camera) {
+        let r = self.brush.thickness / 2.0;
+        let r = r.to_camera_coords(camera);
+        for seg in self.points.windows(2) {
+            let p0 = seg[0].to_camera_coords(camera);
+            let p1 = seg[1].to_camera_coords(camera);
+            d.draw_circle_v(p0, r, self.brush.color);
+            d.draw_circle_v(p1, r, self.brush.color);
+            d.draw_line_ex(
+                p0,
+                p1,
+                self.brush.thickness.to_camera_coords(camera),
+                self.brush.color,
+            );
         }
     }
 }
@@ -213,46 +204,19 @@ impl Drawable for Line {
         self.z
     }
 
-    fn draw(&self, canvas: &mut Canvas, camera: &Camera) {
-        if self.points.len() < 2 {
-            return;
+    fn draw(&self, d: &mut RaylibDrawHandle, camera: &Camera) {
+        match self.points.len() {
+            ..2 => {}
+            2..4 => self.draw_shorter(d, camera),
+            4.. => self.draw_longer(d, camera),
         }
-
-        let mut pb = PathBuilder::new();
-        for seg in self.points.windows(2) {
-            let p0 = seg[0];
-            let p1 = seg[1];
-            pb.move_to(p0.x, p0.y);
-            pb.line_to(p1.x, p1.y);
-        }
-
-        let path = pb.finish().unwrap();
-
-        let mut paint = Paint::default();
-        paint.set_color(self.brush.color.to_skia());
-
-        let stroke = Stroke {
-            width: self.brush.thickness,
-            line_cap: LineCap::Round,
-            line_join: LineJoin::Round,
-            ..Default::default()
-        };
-
-        canvas.pixmap.stroke_path(
-            &path,
-            &paint,
-            &stroke,
-            Transform::from_translate(-camera.pos.x, -camera.pos.y)
-                .post_scale(camera.zoom, camera.zoom),
-            None,
-        );
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct Image {
-    pub pos: Point,
-    pub pixmap: Pixmap,
+    pub pos: Vector2,
+    pub texture: Rc<Texture2D>,
     pub is_selected: bool,
     pub scale: f32,
     pub id: ImageId,
@@ -262,8 +226,8 @@ pub struct Image {
 
 impl Image {
     pub fn new(
-        pos: Point,
-        pixmap: Pixmap,
+        pos: Vector2,
+        texture: Texture2D,
         scale: f32,
         id: ImageId,
         z: usize,
@@ -271,7 +235,7 @@ impl Image {
     ) -> Self {
         Self {
             pos,
-            pixmap,
+            texture: Rc::new(texture),
             is_selected: false,
             scale,
             id,
@@ -281,15 +245,15 @@ impl Image {
     }
 
     pub fn width(&self) -> f32 {
-        self.pixmap.width() as f32 * self.scale
+        self.texture.width as f32 * self.scale
     }
 
     pub fn height(&self) -> f32 {
-        self.pixmap.height() as f32 * self.scale
+        self.texture.height as f32 * self.scale
     }
 
-    pub fn in_bounds(&self, point: Point, camera: &Camera) -> bool {
-        let point = camera.to_camera_coords((point.x as u32, point.y as u32));
+    pub fn in_bounds(&self, point: Vector2, camera: &Camera) -> bool {
+        let point = point.to_canvas_coords(camera);
         point.x >= self.pos.x
             && point.x <= self.pos.x + self.width()
             && point.y >= self.pos.y
@@ -302,51 +266,42 @@ impl Drawable for Image {
         self.z
     }
 
-    fn draw(&self, canvas: &mut Canvas, camera: &Camera) {
-        if self.is_selected {
-            let (w, h) = (self.width(), self.height());
-            Line {
-                points: vec![
-                    self.pos,
-                    self.pos + Point::from_xy(w, 0.0),
-                    self.pos + Point::from_xy(w, h),
-                    self.pos + Point::from_xy(0.0, h),
-                    self.pos,
-                ],
-                finished: true,
-                z: self.z,
-                brush: Brush {
-                    color: self.border_color,
-                    thickness: 5.0,
-                },
-            }
-            .draw(canvas, camera);
-        }
-
-        canvas.pixmap.draw_pixmap(
-            0,
-            0,
-            self.pixmap.as_ref(),
-            &PixmapPaint::default(),
-            Transform::from_translate(
-                (self.pos.x - camera.pos.x) / self.scale,
-                (self.pos.y - camera.pos.y) / self.scale,
-            )
-            .post_scale(camera.zoom * self.scale, camera.zoom * self.scale),
-            None,
+    fn draw(&self, d: &mut RaylibDrawHandle, camera: &Camera) {
+        let draw_pos = self.pos.to_camera_coords(camera);
+        let draw_size = Vector2::new(
+            self.texture.width as f32 * self.scale.to_camera_coords(camera),
+            self.texture.height as f32 * self.scale.to_camera_coords(camera),
         );
+
+        d.draw_texture_ex(
+            &*self.texture,
+            draw_pos,
+            0.0,
+            self.scale.to_camera_coords(camera),
+            Color::WHITE,
+        );
+
+        if self.is_selected {
+            d.draw_rectangle_lines(
+                draw_pos.x as i32,
+                draw_pos.y as i32,
+                draw_size.x as i32,
+                draw_size.y as i32,
+                self.border_color,
+            );
+        }
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct Eraser {
-    rect: Rect,
+    rect: Rectangle,
     color: Color,
     z: usize,
 }
 
 impl Eraser {
-    pub fn new(rect: Rect, color: Color, z: usize) -> Self {
+    pub fn new(rect: Rectangle, color: Color, z: usize) -> Self {
         Self { rect, color, z }
     }
 }
@@ -356,15 +311,11 @@ impl Drawable for Eraser {
         self.z
     }
 
-    fn draw(&self, canvas: &mut Canvas, camera: &Camera) {
-        let mut paint = Paint::default();
-        paint.set_color(self.color.to_skia());
-        canvas.pixmap.fill_rect(
-            self.rect,
-            &paint,
-            Transform::from_translate(-camera.pos.x, -camera.pos.y)
-                .post_scale(camera.zoom, camera.zoom),
-            None,
-        );
+    fn draw(&self, d: &mut RaylibDrawHandle, camera: &Camera) {
+        FilledRect {
+            rect: self.rect,
+            color: self.color,
+        }
+        .draw(d, camera);
     }
 }

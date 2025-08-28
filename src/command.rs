@@ -1,7 +1,7 @@
 use std::collections::VecDeque;
 use std::fmt::Debug;
 
-use tiny_skia::Point;
+use raylib::math::Vector2;
 
 use crate::graphics::{Contents, Eraser, Image, ImageId, Line};
 
@@ -152,12 +152,12 @@ impl Command for ResizeImage {
 #[derive(Debug)]
 pub struct MoveImage {
     id: ImageId,
-    start_pos: Point,
-    end_pos: Point,
+    start_pos: Vector2,
+    end_pos: Vector2,
 }
 
 impl MoveImage {
-    pub fn new(id: ImageId, start_pos: Point, end_pos: Point) -> Self {
+    pub fn new(id: ImageId, start_pos: Vector2, end_pos: Vector2) -> Self {
         Self {
             id,
             start_pos,

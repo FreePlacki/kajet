@@ -1,9 +1,7 @@
-use tiny_skia::Point;
-
-use crate::FPS;
+use raylib::math::Vector2;
 
 pub struct Camera {
-    pub pos: Point,
+    pub pos: Vector2,
     pub zoom: f32,
     zoom_interp: Interpolator,
     pos_x_interp: Interpolator,
@@ -11,50 +9,37 @@ pub struct Camera {
 }
 
 impl Camera {
-    pub fn to_camera_coords(&self, point: (u32, u32)) -> Point {
-        let x = point.0 as f32 / self.zoom + self.pos.x;
-        let y = point.1 as f32 / self.zoom + self.pos.y;
-
-        Point::from_xy(x, y)
-    }
-
     pub fn update_zoom(&mut self, target: f32) {
-        self.zoom_interp = Interpolator::new(self.zoom, target, 0.1);
+        self.zoom_interp = Interpolator::new(self.zoom, target, 0.07);
     }
 
-    pub fn update_pos(&mut self, mouse: Point, prev_mouse: Option<Point>) {
-        if let Some(prev_mouse) = prev_mouse {
-            let mut diff = prev_mouse - mouse;
-            diff.x /= self.zoom;
-            diff.y /= self.zoom;
-            let new_pos = self.pos + diff;
-            self.pos_x_interp = Interpolator::new(self.pos.x, new_pos.x, 0.0);
-            self.pos_y_interp = Interpolator::new(self.pos.y, new_pos.y, 0.0);
-        }
+    pub fn update_pos(&mut self, mouse_delta: Vector2) {
+        let diff = -mouse_delta / self.zoom;
+        let new_pos = self.pos + diff;
+        self.pos_x_interp = Interpolator::new(self.pos.x, new_pos.x, 0.0);
+        self.pos_y_interp = Interpolator::new(self.pos.y, new_pos.y, 0.0);
     }
 
-    pub fn update(&mut self, mouse: Option<Point>) -> bool {
+    pub fn update(&mut self, mouse: Vector2, dt: f32) -> bool {
         let mut updated = false;
 
-        if let Some(dx) = self.pos_x_interp.advance() {
+        if let Some(dx) = self.pos_x_interp.advance(dt) {
             self.pos.x += dx;
             updated = true;
         }
-        if let Some(dy) = self.pos_y_interp.advance() {
+        if let Some(dy) = self.pos_y_interp.advance(dt) {
             self.pos.y += dy;
             updated = true;
         }
 
         let prev_zoom = self.zoom;
-        if let Some(dz) = self.zoom_interp.advance() {
+        if let Some(dz) = self.zoom_interp.advance(dt) {
             self.zoom += dz;
 
-            if let Some(Point { x, y }) = mouse {
-                self.pos.x -= x * (1.0 / self.zoom - 1.0 / prev_zoom);
-                self.pos.y -= y * (1.0 / self.zoom - 1.0 / prev_zoom);
-                self.pos_x_interp = Interpolator::new(self.pos.x, self.pos.x, 0.0);
-                self.pos_y_interp = Interpolator::new(self.pos.y, self.pos.y, 0.0);
-            }
+            self.pos.x -= mouse.x * (1.0 / self.zoom - 1.0 / prev_zoom);
+            self.pos.y -= mouse.y * (1.0 / self.zoom - 1.0 / prev_zoom);
+            self.pos_x_interp = Interpolator::new(self.pos.x, self.pos.x, 0.0);
+            self.pos_y_interp = Interpolator::new(self.pos.y, self.pos.y, 0.0);
             updated = true;
         }
 
@@ -69,12 +54,37 @@ impl Camera {
 impl Default for Camera {
     fn default() -> Self {
         Self {
-            pos: Point::from_xy(0.0, 0.0),
+            pos: Vector2::zero(),
             zoom: 1.0,
             zoom_interp: Interpolator::new(1.0, 1.0, 0.0),
             pos_x_interp: Interpolator::new(0.0, 0.0, 0.0),
             pos_y_interp: Interpolator::new(0.0, 0.0, 0.0),
         }
+    }
+}
+
+pub trait CameraCanvasCoords {
+    fn to_camera_coords(self, camera: &Camera) -> Self;
+    fn to_canvas_coords(self, camera: &Camera) -> Self;
+}
+
+impl CameraCanvasCoords for f32 {
+    fn to_camera_coords(self, camera: &Camera) -> Self {
+        self * camera.zoom
+    }
+
+    fn to_canvas_coords(self, camera: &Camera) -> Self {
+        self / camera.zoom
+    }
+}
+
+impl CameraCanvasCoords for Vector2 {
+    fn to_camera_coords(self, camera: &Camera) -> Self {
+        (self - camera.pos) * camera.zoom
+    }
+
+    fn to_canvas_coords(self, camera: &Camera) -> Self {
+        self / camera.zoom + camera.pos
     }
 }
 
@@ -97,7 +107,7 @@ impl Interpolator {
         }
     }
 
-    pub fn advance(&mut self) -> Option<f32> {
+    pub fn advance(&mut self, dt: f32) -> Option<f32> {
         let tol = 1e-3;
         if self.is_increasing && self.current + tol >= self.target
             || !self.is_increasing && self.current <= self.target + tol
@@ -109,7 +119,7 @@ impl Interpolator {
         let delta = if self.duration_sec == 0.0 {
             self.target - self.starting
         } else {
-            (self.target - self.starting) / (self.duration_sec * FPS as f32)
+            (self.target - self.starting) / self.duration_sec * dt
         };
         self.current += delta;
         Some(delta)

@@ -1,18 +1,16 @@
 use std::{collections::HashMap, fs};
 
 use configparser::ini::Ini;
-use minifb::Key;
+use raylib::{color::Color, ffi::KeyboardKey};
 
-use crate::{
-    graphics::Color,
-    input::{Action, Keybind},
-};
+use crate::input::{Action, Keybind};
 
 const DEFAULT_CONFIG: &'static str = include_str!("../kajet.conf");
 
 #[derive(Debug)]
 pub struct Config {
     pub thickness: f32,
+    pub fps: u32,
     pub scroll_sensitivity: f32,
     pub undo_buffer_size: usize,
     pub background: Color,
@@ -36,6 +34,7 @@ impl Default for Config {
 
         Self {
             thickness: parse!(parse_thickness),
+            fps: parse!(parse_fps),
             scroll_sensitivity: parse!(parse_scroll_sensitivity),
             undo_buffer_size: parse!(parse_undo_buffer_size),
             background: parse!(parse_background),
@@ -97,6 +96,7 @@ impl Config {
 
         Self {
             thickness: parse!(thickness, parse_thickness),
+            fps: parse!(fps, parse_fps),
             scroll_sensitivity: parse!(scroll_sensitivity, parse_scroll_sensitivity),
             undo_buffer_size: parse!(undo_buffer_size, parse_undo_buffer_size),
             background: parse!(background, parse_background),
@@ -116,11 +116,7 @@ impl Config {
 
     fn parse_color(color: &str) -> Result<Color, String> {
         let s = color.trim_start_matches("0x");
-        let col = u32::from_str_radix(s, 16);
-        match col {
-            Ok(c) => Ok(Color(c | 0xFF000000)),
-            Err(e) => Err(e.to_string()),
-        }
+        Color::from_hex(s).map_err(|e| e.to_string())
     }
 
     fn parse_thickness(map: &ConfigMap) -> Result<f32, String> {
@@ -133,6 +129,19 @@ impl Config {
             Err(format!("Brush thickness should be > 0.0, got {thickness}"))
         } else {
             Ok(thickness)
+        }
+    }
+
+    fn parse_fps(map: &ConfigMap) -> Result<u32, String> {
+        let fps = Self::get_value(&map, "other", "fps")?;
+        let fps = match fps.parse::<u32>() {
+            Ok(t) => Ok(t),
+            Err(e) => Err(e.to_string()),
+        }?;
+        if fps < 1 {
+            Err(format!("FPS should be >= 1, got {fps}"))
+        } else {
+            Ok(fps)
         }
     }
 
@@ -231,45 +240,45 @@ impl Config {
         }
     }
 
-    fn parse_key(s: &str) -> Option<Key> {
+    fn parse_key(s: &str) -> Option<KeyboardKey> {
         match s.trim().to_lowercase().as_str() {
-            "shift" => Some(Key::LeftShift),
-            "ctrl" | "control" => Some(Key::LeftCtrl),
-            "alt" => Some(Key::LeftAlt),
-            "caps" | "capslock" => Some(Key::CapsLock),
-            "left" | "leftarrow" => Some(Key::Left),
-            "right" | "rightarrow" => Some(Key::Right),
-            "up" | "uparrow" => Some(Key::Up),
-            "down" | "downarrow" => Some(Key::Down),
-            "tab" => Some(Key::Tab),
-            "del" | "delete" => Some(Key::Delete),
-            "back" | "backspace" => Some(Key::Backspace),
-            "a" => Some(Key::A),
-            "b" => Some(Key::B),
-            "c" => Some(Key::C),
-            "d" => Some(Key::D),
-            "e" => Some(Key::E),
-            "f" => Some(Key::F),
-            "g" => Some(Key::G),
-            "h" => Some(Key::H),
-            "i" => Some(Key::I),
-            "j" => Some(Key::J),
-            "k" => Some(Key::K),
-            "l" => Some(Key::L),
-            "m" => Some(Key::M),
-            "n" => Some(Key::N),
-            "o" => Some(Key::O),
-            "p" => Some(Key::P),
-            "q" => Some(Key::Q),
-            "r" => Some(Key::R),
-            "s" => Some(Key::S),
-            "t" => Some(Key::T),
-            "u" => Some(Key::U),
-            "v" => Some(Key::V),
-            "w" => Some(Key::W),
-            "x" => Some(Key::X),
-            "y" => Some(Key::Y),
-            "z" => Some(Key::Z),
+            "shift" => Some(KeyboardKey::KEY_LEFT_SHIFT),
+            "ctrl" | "control" => Some(KeyboardKey::KEY_LEFT_CONTROL),
+            "alt" => Some(KeyboardKey::KEY_LEFT_ALT),
+            "caps" | "capslock" => Some(KeyboardKey::KEY_CAPS_LOCK),
+            "left" | "leftarrow" => Some(KeyboardKey::KEY_LEFT),
+            "right" | "rightarrow" => Some(KeyboardKey::KEY_RIGHT),
+            "up" | "uparrow" => Some(KeyboardKey::KEY_UP),
+            "down" | "downarrow" => Some(KeyboardKey::KEY_DOWN),
+            "tab" => Some(KeyboardKey::KEY_TAB),
+            "del" | "delete" => Some(KeyboardKey::KEY_DELETE),
+            "back" | "backspace" => Some(KeyboardKey::KEY_BACKSPACE),
+            "a" => Some(KeyboardKey::KEY_A),
+            "b" => Some(KeyboardKey::KEY_B),
+            "c" => Some(KeyboardKey::KEY_C),
+            "d" => Some(KeyboardKey::KEY_D),
+            "e" => Some(KeyboardKey::KEY_E),
+            "f" => Some(KeyboardKey::KEY_F),
+            "g" => Some(KeyboardKey::KEY_G),
+            "h" => Some(KeyboardKey::KEY_H),
+            "i" => Some(KeyboardKey::KEY_I),
+            "j" => Some(KeyboardKey::KEY_J),
+            "k" => Some(KeyboardKey::KEY_K),
+            "l" => Some(KeyboardKey::KEY_L),
+            "m" => Some(KeyboardKey::KEY_M),
+            "n" => Some(KeyboardKey::KEY_N),
+            "o" => Some(KeyboardKey::KEY_O),
+            "p" => Some(KeyboardKey::KEY_P),
+            "q" => Some(KeyboardKey::KEY_Q),
+            "r" => Some(KeyboardKey::KEY_R),
+            "s" => Some(KeyboardKey::KEY_S),
+            "t" => Some(KeyboardKey::KEY_T),
+            "u" => Some(KeyboardKey::KEY_U),
+            "v" => Some(KeyboardKey::KEY_V),
+            "w" => Some(KeyboardKey::KEY_W),
+            "x" => Some(KeyboardKey::KEY_X),
+            "y" => Some(KeyboardKey::KEY_Y),
+            "z" => Some(KeyboardKey::KEY_Z),
             k => {
                 eprintln!("[CONFIG] Unknown key '{k}'");
                 None

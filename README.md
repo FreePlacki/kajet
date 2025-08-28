@@ -1,6 +1,6 @@
 # Kajet
 
-A mnimal infinite canvas drawing app
+A minimal infinite canvas drawing app.
 
 ## Usage
 

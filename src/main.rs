@@ -1,14 +1,10 @@
 #![windows_subsystem = "windows"]
 
+use crate::{config::Config, scene::Scene};
+use arboard::Clipboard;
 use std::{env, process};
 
-use arboard::Clipboard;
-use minifb::{Key, Window, WindowOptions};
-
-use crate::{config::Config, scene::Scene};
-
 mod camera;
-mod canvas;
 mod command;
 mod config;
 mod graphics;
@@ -18,7 +14,6 @@ mod state;
 
 const WIDTH: u32 = 1280;
 const HEIGHT: u32 = 720;
-const FPS: u32 = 120;
 
 fn usage(prog_name: &str) {
     eprintln!("{} {}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
@@ -55,22 +50,20 @@ fn main() {
         }
     };
 
-    let mut window = Window::new(
-        "Kajet",
-        WIDTH as usize,
-        HEIGHT as usize,
-        WindowOptions {
-            resize: true,
-            ..Default::default()
-        },
-    )
-    .unwrap();
-    window.set_cursor_visibility(false);
-    window.set_target_fps(FPS as usize);
+    let (mut rl, thread) = raylib::init()
+        .size(WIDTH as i32, HEIGHT as i32)
+        .title("Kajet")
+        .resizable()
+        .msaa_4x()
+        .log_level(raylib::ffi::TraceLogLevel::LOG_WARNING)
+        .build();
 
-    let mut scene = Scene::new(config, clipboard, &mut window);
+    rl.set_target_fps(config.fps);
+    rl.hide_cursor();
 
-    while window.is_open() && !window.is_key_down(Key::Escape) {
-        scene.process_frame(&mut window);
+    let mut scene = Scene::new(config, clipboard, &mut rl);
+
+    while !rl.window_should_close() {
+        scene.process_frame(&thread, &mut rl);
     }
 }
