@@ -1,5 +1,3 @@
-use std::ffi::c_void;
-
 use arboard::ImageData;
 use raylib::ffi;
 use raylib::{
@@ -9,6 +7,7 @@ use raylib::{
     prelude::RaylibDraw,
     texture,
 };
+use std::ffi::c_void;
 
 use crate::camera::CameraCanvasCoords;
 use crate::graphics::{Brush, FilledCircle, StraightLine};
@@ -31,8 +30,7 @@ pub trait StateHandler {
     ) -> Transition;
 
     fn draw(&self, data: &mut SceneData, thread: &RaylibThread, rl: &mut RaylibHandle) {
-        data.camera
-            .update(rl.get_mouse_position(), rl.get_frame_time());
+        data.camera.update(rl);
 
         // DO NOT USE RaylibHandle::draw as it results in some input being dropped!
         let mut d = rl.begin_drawing(thread);
@@ -42,6 +40,10 @@ pub trait StateHandler {
         combined.extend(data.contents.images.iter().map(|i| i as &dyn Drawable));
         combined.extend(data.contents.lines.iter().map(|i| i as &dyn Drawable));
         combined.extend(data.contents.erasers.iter().map(|i| i as &dyn Drawable));
+        combined = combined
+            .into_iter()
+            .filter(|i| i.is_visible(&data.camera))
+            .collect::<Vec<_>>();
         combined.sort_by_key(|i| i.z());
         combined.extend(data.contents.overlay.iter().map(|i| &**i as &dyn Drawable));
         combined.iter().for_each(|i| i.draw(&mut d, &data.camera));
@@ -150,10 +152,10 @@ impl StateHandler for Idle {
         }));
 
         if rl.is_mouse_button_down(MouseButton::MOUSE_BUTTON_LEFT) {
-            if rl.is_key_down(KeyboardKey::KEY_LEFT_CONTROL) {
-                if let Some(id) = data.image_under_cursor(rl.get_mouse_position()) {
-                    return Transition::Switch(Box::new(ModifyingImage(id)));
-                }
+            if rl.is_key_down(KeyboardKey::KEY_LEFT_CONTROL)
+                && let Some(id) = data.image_under_cursor(rl.get_mouse_position())
+            {
+                return Transition::Switch(Box::new(ModifyingImage(id)));
             }
             return Transition::Switch(Box::new(Drawing));
         }
@@ -181,10 +183,10 @@ impl StateHandler for Idle {
             Action::NextColor => data.update_color(true),
             Action::PrevColor => data.update_color(false),
             Action::Paste => {
-                if let Some(ref mut clipboard) = data.clipboard {
-                    if let Ok(image_data) = clipboard.get_image() {
-                        self.try_paste_image(data, thread, rl, image_data);
-                    }
+                if let Some(ref mut clipboard) = data.clipboard
+                    && let Ok(image_data) = clipboard.get_image()
+                {
+                    self.try_paste_image(data, thread, rl, image_data);
                 }
             }
             _ => {}
@@ -334,10 +336,10 @@ impl StateHandler for Erasing {
         rl.set_mouse_cursor(MouseCursor::MOUSE_CURSOR_ARROW);
 
         let start = rl.get_mouse_position().to_canvas_coords(&data.camera);
-        self.eraser = Some(FilledRect {
-            rect: Rectangle::new(start.x, start.y, 0.0, 0.0),
-            color: data.config.background,
-        });
+        self.eraser = Some(FilledRect::new(
+            Rectangle::new(start.x, start.y, 0.0, 0.0),
+            data.config.background,
+        ));
     }
 
     fn on_exit(&mut self, data: &mut SceneData, _rl: &mut RaylibHandle) {
@@ -353,9 +355,8 @@ impl StateHandler for Erasing {
                 .erasers
                 .push(Eraser::new(rect, eraser.color, data.contents.z));
             data.contents.z += 1;
-            data.command_invoker.push(AddEraser::new(
-                data.contents.erasers.last().unwrap().clone(),
-            ));
+            data.command_invoker
+                .push(AddEraser::new(*data.contents.erasers.last().unwrap()));
         }
     }
 
@@ -373,8 +374,8 @@ impl StateHandler for Erasing {
 
         if let Some(eraser) = self.eraser.as_mut() {
             let d = rl.get_mouse_delta();
-            eraser.rect.width += d.x;
-            eraser.rect.height += d.y;
+            eraser.rect.width += d.x.to_canvas_coords(&data.camera);
+            eraser.rect.height += d.y.to_canvas_coords(&data.camera);
 
             data.contents.overlay.push(Box::new(*eraser));
         }
@@ -423,10 +424,8 @@ impl StateHandler for ModifyingImage {
         }
 
         let scroll = rl.get_mouse_wheel_move_v();
-        if scroll.y != 0.0 {
-            if !rl.is_key_down(KeyboardKey::KEY_LEFT_CONTROL) {
-                data.update_zoom(scroll.y);
-            }
+        if scroll.y != 0.0 && !rl.is_key_down(KeyboardKey::KEY_LEFT_CONTROL) {
+            data.update_zoom(scroll.y);
         }
 
         match data.input_handler.interpret(rl) {

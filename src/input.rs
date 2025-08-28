@@ -29,14 +29,15 @@ impl Keybind {
     }
     pub fn action(&self, rl: &RaylibHandle) -> Option<Action> {
         for combo in &self.keys {
-            if let Some((&last, rest)) = combo.split_last() {
-                if rl.is_key_pressed(last) && rest.iter().all(|&k| rl.is_key_down(k)) {
-                    return Some(self.action);
-                }
+            if let Some((&last, rest)) = combo.split_last()
+                && rl.is_key_pressed(last)
+                && rest.iter().all(|&k| rl.is_key_down(k))
+            {
+                return Some(self.action);
             }
         }
 
-        return None;
+        None
     }
 }
 

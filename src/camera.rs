@@ -1,8 +1,13 @@
-use raylib::math::Vector2;
+use raylib::{
+    RaylibHandle,
+    math::{Rectangle, Vector2},
+};
 
 pub struct Camera {
-    pub pos: Vector2,
     pub zoom: f32,
+    pos: Vector2,
+    width: f32,
+    height: f32,
     zoom_interp: Interpolator,
     pos_x_interp: Interpolator,
     pos_y_interp: Interpolator,
@@ -14,14 +19,18 @@ impl Camera {
     }
 
     pub fn update_pos(&mut self, mouse_delta: Vector2) {
-        let diff = -mouse_delta / self.zoom;
-        let new_pos = self.pos + diff;
+        let diff = mouse_delta / self.zoom;
+        let new_pos = self.pos - diff;
         self.pos_x_interp = Interpolator::new(self.pos.x, new_pos.x, 0.0);
         self.pos_y_interp = Interpolator::new(self.pos.y, new_pos.y, 0.0);
     }
 
-    pub fn update(&mut self, mouse: Vector2, dt: f32) -> bool {
+    pub fn update(&mut self, rl: &RaylibHandle) -> bool {
         let mut updated = false;
+        let dt = rl.get_frame_time();
+        let mouse = rl.get_mouse_position();
+        self.width = (rl.get_render_width() as f32).to_canvas_coords(self);
+        self.height = (rl.get_render_height() as f32).to_canvas_coords(self);
 
         if let Some(dx) = self.pos_x_interp.advance(dt) {
             self.pos.x += dx;
@@ -49,6 +58,15 @@ impl Camera {
 
         true
     }
+
+    pub fn get_rect(&self) -> Rectangle {
+        Rectangle {
+            x: self.pos.x,
+            y: self.pos.y,
+            width: self.width,
+            height: self.height,
+        }
+    }
 }
 
 impl Default for Camera {
@@ -56,6 +74,8 @@ impl Default for Camera {
         Self {
             pos: Vector2::zero(),
             zoom: 1.0,
+            width: 0.0,
+            height: 0.0,
             zoom_interp: Interpolator::new(1.0, 1.0, 0.0),
             pos_x_interp: Interpolator::new(0.0, 0.0, 0.0),
             pos_y_interp: Interpolator::new(0.0, 0.0, 0.0),

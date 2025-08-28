@@ -5,7 +5,7 @@ use raylib::{color::Color, ffi::KeyboardKey};
 
 use crate::input::{Action, Keybind};
 
-const DEFAULT_CONFIG: &'static str = include_str!("../kajet.conf");
+const DEFAULT_CONFIG: &str = include_str!("../kajet.conf");
 
 #[derive(Debug)]
 pub struct Config {
@@ -120,7 +120,7 @@ impl Config {
     }
 
     fn parse_thickness(map: &ConfigMap) -> Result<f32, String> {
-        let thickness = Self::get_value(&map, "brush", "thickness")?;
+        let thickness = Self::get_value(map, "brush", "thickness")?;
         let thickness = match thickness.parse::<f32>() {
             Ok(t) => Ok(t),
             Err(e) => Err(e.to_string()),
@@ -133,7 +133,7 @@ impl Config {
     }
 
     fn parse_fps(map: &ConfigMap) -> Result<u32, String> {
-        let fps = Self::get_value(&map, "other", "fps")?;
+        let fps = Self::get_value(map, "other", "fps")?;
         let fps = match fps.parse::<u32>() {
             Ok(t) => Ok(t),
             Err(e) => Err(e.to_string()),
@@ -146,7 +146,7 @@ impl Config {
     }
 
     fn parse_scroll_sensitivity(map: &ConfigMap) -> Result<f32, String> {
-        let scroll_sensitivity = Self::get_value(&map, "other", "scroll_sensitivity")?;
+        let scroll_sensitivity = Self::get_value(map, "other", "scroll_sensitivity")?;
         let scroll_sensitivity = match scroll_sensitivity.parse::<f32>() {
             Ok(t) => Ok(t),
             Err(e) => Err(e.to_string()),
@@ -161,7 +161,7 @@ impl Config {
     }
 
     fn parse_undo_buffer_size(map: &ConfigMap) -> Result<usize, String> {
-        let undo_buffer_size = Self::get_value(&map, "other", "undo_buffer_size")?;
+        let undo_buffer_size = Self::get_value(map, "other", "undo_buffer_size")?;
         let undo_buffer_size = match undo_buffer_size.parse::<usize>() {
             Ok(t) => Ok(t),
             Err(e) => Err(e.to_string()),
@@ -177,7 +177,7 @@ impl Config {
             if !map["colors"].contains_key(&name) {
                 continue;
             }
-            let color = Self::get_value(&map, "colors", &name)?;
+            let color = Self::get_value(map, "colors", &name)?;
             colors.push(Self::parse_color(&color)?);
         }
 
@@ -189,7 +189,7 @@ impl Config {
     }
 
     fn parse_background(map: &ConfigMap) -> Result<Color, String> {
-        let background = Self::get_value(&map, "colors", "background")?;
+        let background = Self::get_value(map, "colors", "background")?;
         let background = Self::parse_color(&background)?;
         Ok(background)
     }

@@ -45,9 +45,7 @@ impl Contents {
     }
 
     pub fn remove_image(&mut self, id: ImageId) -> Option<Image> {
-        let Some(index) = self.images.iter().position(|i| i.id == id) else {
-            return None;
-        };
+        let index = self.images.iter().position(|i| i.id == id)?;
 
         Some(self.images.remove(index))
     }
@@ -76,6 +74,7 @@ pub struct Brush {
 pub trait Drawable {
     fn z(&self) -> usize;
     fn draw(&self, d: &mut RaylibDrawHandle, camera: &Camera);
+    fn is_visible(&self, camera: &Camera) -> bool;
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -94,6 +93,12 @@ impl Drawable for FilledCircle {
 
         d.draw_circle(self.pos.x as i32, self.pos.y as i32, r, self.brush.color);
     }
+
+    fn is_visible(&self, camera: &Camera) -> bool {
+        camera
+            .get_rect()
+            .check_collision_circle_rec(self.pos, self.brush.thickness / 2.0)
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -102,16 +107,11 @@ pub struct FilledRect {
     pub color: Color,
 }
 
-impl Drawable for FilledRect {
-    fn z(&self) -> usize {
-        0
-    }
-
-    fn draw(&self, d: &mut RaylibDrawHandle, camera: &Camera) {
-        let Vector2 { mut x, mut y } =
-            Vector2::new(self.rect.x, self.rect.y).to_camera_coords(camera);
-        let mut w = self.rect.width.to_camera_coords(camera);
-        let mut h = self.rect.height.to_camera_coords(camera);
+impl FilledRect {
+    pub fn new(rect: Rectangle, color: Color) -> Self {
+        let Vector2 { mut x, mut y } = Vector2::new(rect.x, rect.y);
+        let mut w = rect.width;
+        let mut h = rect.height;
 
         if w < 0.0 {
             x += w;
@@ -122,7 +122,28 @@ impl Drawable for FilledRect {
             h = -h;
         }
 
+        Self {
+            rect: Rectangle::new(x, y, w, h),
+            color,
+        }
+    }
+}
+
+impl Drawable for FilledRect {
+    fn z(&self) -> usize {
+        0
+    }
+
+    fn draw(&self, d: &mut RaylibDrawHandle, camera: &Camera) {
+        let Vector2 { x, y } = Vector2::new(self.rect.x, self.rect.y).to_camera_coords(camera);
+        let w = self.rect.width.to_camera_coords(camera);
+        let h = self.rect.height.to_camera_coords(camera);
+
         d.draw_rectangle(x as i32, y as i32, w as i32, h as i32, self.color);
+    }
+
+    fn is_visible(&self, camera: &Camera) -> bool {
+        camera.get_rect().check_collision_recs(&self.rect)
     }
 }
 
@@ -145,6 +166,16 @@ impl Drawable for StraightLine {
             self.brush.thickness.to_camera_coords(camera),
             self.brush.color,
         );
+    }
+
+    fn is_visible(&self, camera: &Camera) -> bool {
+        Line {
+            points: vec![self.start, self.end],
+            finished: true,
+            brush: self.brush,
+            z: 0,
+        }
+        .is_visible(camera)
     }
 }
 
@@ -211,6 +242,20 @@ impl Drawable for Line {
             4.. => self.draw_longer(d, camera),
         }
     }
+
+    fn is_visible(&self, camera: &Camera) -> bool {
+        // TODO: replace line-circle with line-rect collision (not implemented in rl)
+        for seg in self.points.windows(2) {
+            let rect = camera.get_rect();
+            let center = Vector2::new(rect.x + rect.width / 2.0, rect.y + rect.height / 2.0);
+            let radius = rect.width.hypot(rect.height) / 2.0 + self.brush.thickness;
+
+            if Rectangle::default().check_collision_circle_line(center, radius, seg[0], seg[1]) {
+                return true;
+            }
+        }
+        false
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -252,12 +297,18 @@ impl Image {
         self.texture.height as f32 * self.scale
     }
 
+    fn get_rect(&self) -> Rectangle {
+        Rectangle {
+            x: self.pos.x,
+            y: self.pos.y,
+            width: self.width(),
+            height: self.height(),
+        }
+    }
+
     pub fn in_bounds(&self, point: Vector2, camera: &Camera) -> bool {
         let point = point.to_canvas_coords(camera);
-        point.x >= self.pos.x
-            && point.x <= self.pos.x + self.width()
-            && point.y >= self.pos.y
-            && point.y <= self.pos.y + self.height()
+        self.get_rect().check_collision_point_rec(point)
     }
 }
 
@@ -291,18 +342,24 @@ impl Drawable for Image {
             );
         }
     }
+
+    fn is_visible(&self, camera: &Camera) -> bool {
+        camera.get_rect().check_collision_recs(&self.get_rect())
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
 pub struct Eraser {
-    rect: Rectangle,
-    color: Color,
+    rect: FilledRect,
     z: usize,
 }
 
 impl Eraser {
     pub fn new(rect: Rectangle, color: Color, z: usize) -> Self {
-        Self { rect, color, z }
+        Self {
+            rect: FilledRect::new(rect, color),
+            z,
+        }
     }
 }
 
@@ -312,10 +369,10 @@ impl Drawable for Eraser {
     }
 
     fn draw(&self, d: &mut RaylibDrawHandle, camera: &Camera) {
-        FilledRect {
-            rect: self.rect,
-            color: self.color,
-        }
-        .draw(d, camera);
+        self.rect.draw(d, camera);
+    }
+
+    fn is_visible(&self, camera: &Camera) -> bool {
+        camera.get_rect().check_collision_recs(&self.rect.rect)
     }
 }

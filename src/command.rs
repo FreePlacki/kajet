@@ -193,7 +193,7 @@ impl AddEraser {
 
 impl Command for AddEraser {
     fn execute(&mut self, contents: &mut Contents) {
-        contents.erasers.push(self.eraser.clone());
+        contents.erasers.push(self.eraser);
     }
 
     fn undo(&mut self, contents: &mut Contents) {
