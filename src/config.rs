@@ -11,6 +11,7 @@ const DEFAULT_CONFIG: &str = include_str!("../kajet.conf");
 pub struct Config {
     pub thickness: f32,
     pub fps: u32,
+    pub show_fps: bool,
     pub scroll_sensitivity: f32,
     pub undo_buffer_size: usize,
     pub background: Color,
@@ -35,6 +36,7 @@ impl Default for Config {
         Self {
             thickness: parse!(parse_thickness),
             fps: parse!(parse_fps),
+            show_fps: parse!(parse_show_fps),
             scroll_sensitivity: parse!(parse_scroll_sensitivity),
             undo_buffer_size: parse!(parse_undo_buffer_size),
             background: parse!(parse_background),
@@ -97,6 +99,7 @@ impl Config {
         Self {
             thickness: parse!(thickness, parse_thickness),
             fps: parse!(fps, parse_fps),
+            show_fps: parse!(show_fps, parse_show_fps),
             scroll_sensitivity: parse!(scroll_sensitivity, parse_scroll_sensitivity),
             undo_buffer_size: parse!(undo_buffer_size, parse_undo_buffer_size),
             background: parse!(background, parse_background),
@@ -142,6 +145,15 @@ impl Config {
             Err(format!("FPS should be >= 1, got {fps}"))
         } else {
             Ok(fps)
+        }
+    }
+
+    fn parse_show_fps(map: &ConfigMap) -> Result<bool, String> {
+        let show_fps = Self::get_value(map, "other", "show_fps")?;
+        match show_fps.to_lowercase().as_str() {
+            "true" => Ok(true),
+            "false" => Ok(false),
+            s => Err(format!("show_fps should be either true or false, got {s}")),
         }
     }
 

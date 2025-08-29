@@ -48,7 +48,9 @@ pub trait StateHandler {
         combined.extend(data.contents.overlay.iter().map(|i| &**i as &dyn Drawable));
         combined.iter().for_each(|i| i.draw(&mut d, &data.camera));
 
-        d.draw_fps(50, 50);
+        if data.config.show_fps {
+            d.draw_fps(50, 50);
+        }
     }
 }
 
