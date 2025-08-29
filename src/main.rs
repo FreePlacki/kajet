@@ -7,6 +7,7 @@ use std::{env, process};
 mod camera;
 mod command;
 mod config;
+mod units;
 mod graphics;
 mod input;
 mod scene;

@@ -4,7 +4,7 @@ use std::{
 };
 
 use arboard::Clipboard;
-use raylib::{math::Vector2, RaylibHandle, RaylibThread};
+use raylib::{RaylibHandle, RaylibThread};
 
 use crate::{
     camera::Camera,
@@ -13,6 +13,7 @@ use crate::{
     graphics::{Brush, Contents, Drawable, ImageId},
     input::InputHandler,
     state::{self, StateHandler, Transition},
+    units::{CanvasSpace, Length, Point, ScreenSpace, Transformable},
 };
 
 pub struct Scene {
@@ -48,7 +49,7 @@ pub struct SceneData {
     pub camera: Camera,
     pub contents: Contents,
     pub command_invoker: CommandInvoker,
-    pub brush: Brush,
+    pub brush: Brush<CanvasSpace>,
     pub config: Rc<Config>,
     pub clipboard: Option<Clipboard>,
     color_idx: usize,
@@ -59,7 +60,7 @@ impl SceneData {
         let config = Rc::new(config);
         let brush = Brush {
             color: config.colors[0],
-            thickness: config.thickness,
+            thickness: Length::new(config.thickness),
         };
         let command_invoker = CommandInvoker::new(config.undo_buffer_size);
         let input_handler = InputHandler::new(Rc::clone(&config));
@@ -77,7 +78,14 @@ impl SceneData {
     }
 
     pub fn update_thickness(&mut self, scroll_y: f32) {
-        self.brush.thickness = self.brush.thickness.add(scroll_y.signum()).clamp(1.0, 30.0);
+        unsafe {
+            *self.brush.thickness.v_mut() = self
+                .brush
+                .thickness
+                .v()
+                .add(scroll_y.signum())
+                .clamp(1.0, 30.0);
+        }
     }
 
     pub fn update_zoom(&mut self, scroll_y: f32) {
@@ -96,11 +104,11 @@ impl SceneData {
         self.brush.color = self.config.colors[self.color_idx];
     }
 
-    pub fn image_under_cursor(&self, mouse: Vector2) -> Option<ImageId> {
+    pub fn image_under_cursor(&self, mouse: Point<ScreenSpace>) -> Option<ImageId> {
         self.contents
             .images
             .iter()
-            .filter(|i| i.in_bounds(mouse, &self.camera))
+            .filter(|i| i.in_bounds(mouse.transform(&self.camera)))
             .max_by_key(|i| i.z())
             .map(|i| i.id)
     }

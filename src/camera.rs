@@ -1,16 +1,13 @@
-use raylib::{
-    RaylibHandle,
-    math::{Rectangle, Vector2},
-};
+use raylib::{RaylibHandle, math::Vector2};
+
+use crate::units::{CanvasSpace, Length, Point, Rect, ScreenSpace, Transformable, Vector};
 
 pub struct Camera {
     pub zoom: f32,
-    pos: Vector2,
-    width: f32,
-    height: f32,
+    pub pos: Point<CanvasSpace>,
+    width: Length<CanvasSpace>,
+    height: Length<CanvasSpace>,
     zoom_interp: Interpolator,
-    pos_x_interp: Interpolator,
-    pos_y_interp: Interpolator,
 }
 
 impl Camera {
@@ -18,37 +15,25 @@ impl Camera {
         self.zoom_interp = Interpolator::new(self.zoom, target, 0.07);
     }
 
-    pub fn update_pos(&mut self, mouse_delta: Vector2) {
-        let diff = mouse_delta / self.zoom;
-        let new_pos = self.pos - diff;
-        self.pos_x_interp = Interpolator::new(self.pos.x, new_pos.x, 0.0);
-        self.pos_y_interp = Interpolator::new(self.pos.y, new_pos.y, 0.0);
+    pub fn update_pos(&mut self, mouse_delta: Vector<ScreenSpace>) {
+        let new_pos = self.pos - mouse_delta.transform(self);
+        self.pos = new_pos;
     }
 
     pub fn update(&mut self, rl: &RaylibHandle) -> bool {
         let mut updated = false;
         let dt = rl.get_frame_time();
-        let mouse = rl.get_mouse_position();
-        self.width = (rl.get_render_width() as f32).to_canvas_coords(self);
-        self.height = (rl.get_render_height() as f32).to_canvas_coords(self);
-
-        if let Some(dx) = self.pos_x_interp.advance(dt) {
-            self.pos.x += dx;
-            updated = true;
-        }
-        if let Some(dy) = self.pos_y_interp.advance(dt) {
-            self.pos.y += dy;
-            updated = true;
-        }
+        let mouse = Point::<ScreenSpace>::new(rl.get_mouse_position());
+        self.width = Length::<ScreenSpace>::new(rl.get_render_width() as f32).transform(self);
+        self.height = Length::<ScreenSpace>::new(rl.get_render_height() as f32).transform(self);
 
         let prev_zoom = self.zoom;
         if let Some(dz) = self.zoom_interp.advance(dt) {
             self.zoom += dz;
 
-            self.pos.x -= mouse.x * (1.0 / self.zoom - 1.0 / prev_zoom);
-            self.pos.y -= mouse.y * (1.0 / self.zoom - 1.0 / prev_zoom);
-            self.pos_x_interp = Interpolator::new(self.pos.x, self.pos.x, 0.0);
-            self.pos_y_interp = Interpolator::new(self.pos.y, self.pos.y, 0.0);
+            unsafe {
+                *self.pos.v_mut() = self.pos.v() - mouse.v() * (1.0 / self.zoom - 1.0 / prev_zoom);
+            }
             updated = true;
         }
 
@@ -59,52 +44,20 @@ impl Camera {
         true
     }
 
-    pub fn get_rect(&self) -> Rectangle {
-        Rectangle {
-            x: self.pos.x,
-            y: self.pos.y,
-            width: self.width,
-            height: self.height,
-        }
+    pub fn get_rect(&self) -> Rect<CanvasSpace> {
+        Rect::new(self.pos, self.width, self.height)
     }
 }
 
 impl Default for Camera {
     fn default() -> Self {
         Self {
-            pos: Vector2::zero(),
+            pos: Point::new(Vector2::default()),
             zoom: 1.0,
-            width: 0.0,
-            height: 0.0,
+            width: Length::new(0.0),
+            height: Length::new(0.0),
             zoom_interp: Interpolator::new(1.0, 1.0, 0.0),
-            pos_x_interp: Interpolator::new(0.0, 0.0, 0.0),
-            pos_y_interp: Interpolator::new(0.0, 0.0, 0.0),
         }
-    }
-}
-
-pub trait CameraCanvasCoords {
-    fn to_camera_coords(self, camera: &Camera) -> Self;
-    fn to_canvas_coords(self, camera: &Camera) -> Self;
-}
-
-impl CameraCanvasCoords for f32 {
-    fn to_camera_coords(self, camera: &Camera) -> Self {
-        self * camera.zoom
-    }
-
-    fn to_canvas_coords(self, camera: &Camera) -> Self {
-        self / camera.zoom
-    }
-}
-
-impl CameraCanvasCoords for Vector2 {
-    fn to_camera_coords(self, camera: &Camera) -> Self {
-        (self - camera.pos) * camera.zoom
-    }
-
-    fn to_canvas_coords(self, camera: &Camera) -> Self {
-        self / camera.zoom + camera.pos
     }
 }
 
