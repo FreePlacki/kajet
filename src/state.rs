@@ -206,9 +206,6 @@ impl StateHandler for Drawing {
     fn on_exit(&mut self, data: &mut SceneData, rl: &mut RaylibHandle) {
         if let Some(last) = data.contents.lines.last_mut() {
             last.finished = true;
-            // to draw the rest when holding shift
-            let mouse = rl.get_mouse_position();
-            last.points.push(mouse.to_canvas_coords(&data.camera));
             let cmd = DrawLine::new(data.contents.lines.last().unwrap().clone());
             data.command_invoker.push(cmd);
         }
