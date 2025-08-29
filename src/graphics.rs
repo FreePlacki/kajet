@@ -200,13 +200,12 @@ impl Line {
     fn draw_longer(&self, d: &mut RaylibDrawHandle, camera: &Camera) {
         assert!(self.points.len() >= 4);
 
-        let pts = &self
-            .points
-            .iter()
+        let pts = std::iter::once(&(self.points[0] * 2.0f32 - self.points[1]))
+            .chain(self.points.iter())
             .map(|p| p.to_camera_coords(camera))
             .collect::<Box<_>>();
         d.draw_spline_catmull_rom(
-            pts,
+            &pts,
             self.brush.thickness.to_camera_coords(camera),
             self.brush.color,
         );
@@ -228,6 +227,15 @@ impl Line {
             );
         }
     }
+
+    fn draw_single(&self, d: &mut RaylibDrawHandle, camera: &Camera) {
+        assert!(self.points.len() == 1);
+
+        let p = self.points[0].to_camera_coords(camera);
+        let r = self.brush.thickness.to_camera_coords(camera) / 2.0;
+
+        d.draw_circle_v(p, r, self.brush.color);
+    }
 }
 
 impl Drawable for Line {
@@ -237,13 +245,18 @@ impl Drawable for Line {
 
     fn draw(&self, d: &mut RaylibDrawHandle, camera: &Camera) {
         match self.points.len() {
-            ..2 => {}
+            0 => {}
+            1 => self.draw_single(d, camera),
             2..4 => self.draw_shorter(d, camera),
             4.. => self.draw_longer(d, camera),
         }
     }
 
     fn is_visible(&self, camera: &Camera) -> bool {
+        if self.points.len() == 1 {
+            return camera.get_rect().check_collision_point_rec(self.points[0]);
+        }
+
         // TODO: replace line-circle with line-rect collision (not implemented in rl)
         for seg in self.points.windows(2) {
             let rect = camera.get_rect();

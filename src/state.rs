@@ -199,11 +199,15 @@ impl StateHandler for Idle {
 }
 
 impl StateHandler for Drawing {
-    fn on_enter(&mut self, _data: &mut SceneData, rl: &mut RaylibHandle) {
+    fn on_enter(&mut self, data: &mut SceneData, rl: &mut RaylibHandle) {
         rl.hide_cursor();
+        let pos = rl.get_mouse_position().to_canvas_coords(&data.camera);
+        data.contents
+            .lines
+            .push(Line::new(pos, data.brush, data.contents.z));
     }
 
-    fn on_exit(&mut self, data: &mut SceneData, rl: &mut RaylibHandle) {
+    fn on_exit(&mut self, data: &mut SceneData, _rl: &mut RaylibHandle) {
         if let Some(last) = data.contents.lines.last_mut() {
             last.finished = true;
             let cmd = DrawLine::new(data.contents.lines.last().unwrap().clone());
@@ -234,20 +238,19 @@ impl StateHandler for Drawing {
         }
 
         let pos = rl.get_mouse_position().to_canvas_coords(&data.camera);
-        if let Some(line) = data.contents.lines.last_mut() {
-            if line.finished {
-                data.contents
-                    .lines
-                    .push(Line::new(pos, data.brush, data.contents.z));
-            } else if line.points.last().unwrap().distance_to(pos)
-                >= 5.0f32.to_canvas_coords(&data.camera)
-            {
-                line.points.push(pos);
-            }
-        } else {
+        let line = data
+            .contents
+            .lines
+            .last_mut()
+            .expect("A line should be present because we insert a new one on_enter");
+        if line.finished {
             data.contents
                 .lines
                 .push(Line::new(pos, data.brush, data.contents.z));
+        } else if line.points.last().unwrap().distance_to(pos)
+            >= 5.0f32.to_canvas_coords(&data.camera)
+        {
+            line.points.push(pos);
         }
 
         Transition::Stay
