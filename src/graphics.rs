@@ -110,7 +110,7 @@ pub struct FilledRect {
 impl FilledRect {
     pub fn new(rect: Rect<CanvasSpace>, color: Color) -> Self {
         Self {
-            rect: rect.normalized(),
+            rect: rect,
             color,
         }
     }
@@ -122,7 +122,7 @@ impl Drawable for FilledRect {
     }
 
     fn draw(&self, d: &mut RaylibDrawHandle, camera: &Camera) {
-        let rect = self.rect.transform(camera);
+        let rect = self.rect.normalized().transform(camera);
         d.draw_rectangle_v(rect.pos(), rect.size(), self.color);
     }
 
