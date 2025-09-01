@@ -109,10 +109,7 @@ pub struct FilledRect {
 
 impl FilledRect {
     pub fn new(rect: Rect<CanvasSpace>, color: Color) -> Self {
-        Self {
-            rect: rect,
-            color,
-        }
+        Self { rect, color }
     }
 }
 
