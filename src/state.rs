@@ -8,15 +8,28 @@ use raylib::{
     texture,
 };
 use std::ffi::c_void;
+use widok::{
+    CanvasLength, CanvasPoint, CanvasRect, CanvasSize, ScreenPoint, ScreenSize, ScreenSpace,
+    ScreenVector, ToCanvas, ToScreen,
+};
 
 use crate::graphics::{Brush, FilledCircle, StraightLine};
-use crate::units::{CanvasSpace, Length, Point, Rect, ScreenSpace, Transformable, Vector};
 use crate::{
     command::{self, AddEraser, DrawLine},
     graphics::{Drawable, Eraser, FilledRect, Image, ImageId, Line},
     input::Action,
     scene::SceneData,
 };
+
+fn mouse_pos(rl: &RaylibHandle) -> ScreenPoint {
+    let Vector2 { x, y } = rl.get_mouse_position();
+    ScreenPoint::new(x, y)
+}
+
+fn mouse_delta(rl: &RaylibHandle) -> ScreenVector {
+    let Vector2 { x, y } = rl.get_mouse_delta();
+    ScreenVector::new(x, y)
+}
 
 pub trait StateHandler {
     fn on_enter(&mut self, _data: &mut SceneData, _rl: &mut RaylibHandle) {}
@@ -30,7 +43,8 @@ pub trait StateHandler {
     ) -> Transition;
 
     fn draw(&self, data: &mut SceneData, thread: &RaylibThread, rl: &mut RaylibHandle) {
-        data.camera.update(rl);
+        let size = ScreenSize::new(rl.get_screen_width() as f32, rl.get_screen_height() as f32);
+        data.camera.update(rl.get_frame_time(), mouse_pos(rl), size);
 
         // DO NOT USE RaylibHandle::draw as it results in some input being dropped!
         let mut d = rl.begin_drawing(thread);
@@ -42,7 +56,7 @@ pub trait StateHandler {
         combined.extend(data.contents.erasers.iter().map(|i| i as &dyn Drawable));
         combined = combined
             .into_iter()
-            .filter(|i| i.is_visible(&data.camera))
+            .filter(|i| i.is_in_view(&data.camera))
             .collect::<Vec<_>>();
         combined.sort_by_key(|i| i.z());
         combined.extend(data.contents.overlay.iter().map(|i| &**i as &dyn Drawable));
@@ -61,11 +75,11 @@ struct MovingCanvas;
 struct ModifyingImage(ImageId);
 struct MovingImage {
     id: ImageId,
-    start_pos: Point<CanvasSpace>,
+    start_pos: CanvasPoint,
 }
 struct ResizingImage {
     id: ImageId,
-    start_scale: Length<CanvasSpace>,
+    start_scale: CanvasLength,
 }
 
 struct Erasing {
@@ -115,19 +129,19 @@ impl Idle {
             return;
         };
 
-        let mouse = Point::<ScreenSpace>::new(rl.get_mouse_position());
-        let delta = Vector::<ScreenSpace>::new(Vector2::new(
+        let mouse = mouse_pos(rl);
+        let delta = ScreenVector::new(
             image_data.width as f32 / 2.0,
             image_data.height as f32 / 2.0,
-        ));
+        );
         let pos = mouse - delta;
 
         // TODO: consider adding this to contents instead of exposing this api
         data.contents.z += 1;
         let image = Image::new(
-            pos.transform(&data.camera),
+            pos.to_canvas(&data.camera),
             texture,
-            Length::new(1.0 / data.camera.zoom),
+            CanvasLength::new(1.0 / data.camera.zoom().0),
             data.contents.next_image_id(),
             data.contents.z,
             &data.config,
@@ -148,17 +162,19 @@ impl StateHandler for Idle {
         thread: &RaylibThread,
         rl: &mut RaylibHandle,
     ) -> Transition {
+        let mouse = mouse_pos(rl);
+
         data.contents.overlay.push(Box::new(FilledCircle {
-            pos: Point::new(rl.get_mouse_position()),
+            pos: mouse,
             brush: Brush {
                 color: data.brush.color,
-                thickness: data.brush.thickness.transform(&data.camera),
+                thickness: data.brush.thickness.to_screen(&data.camera),
             },
         }));
 
         if rl.is_mouse_button_down(MouseButton::MOUSE_BUTTON_LEFT) {
             if rl.is_key_down(KeyboardKey::KEY_LEFT_CONTROL)
-                && let Some(id) = data.image_under_cursor(Point::new(rl.get_mouse_position()))
+                && let Some(id) = data.image_under_cursor(mouse)
             {
                 return Transition::Switch(Box::new(ModifyingImage(id)));
             }
@@ -204,7 +220,7 @@ impl StateHandler for Idle {
 impl StateHandler for Drawing {
     fn on_enter(&mut self, data: &mut SceneData, rl: &mut RaylibHandle) {
         rl.hide_cursor();
-        let pos = Point::<ScreenSpace>::new(rl.get_mouse_position()).transform(&data.camera);
+        let pos = mouse_pos(rl).to_canvas(&data.camera);
         data.contents
             .lines
             .push(Line::new(pos, data.brush, data.contents.z));
@@ -228,11 +244,12 @@ impl StateHandler for Drawing {
             return Transition::Switch(Box::new(Idle));
         }
 
+        let mouse = mouse_pos(rl);
         data.contents.overlay.push(Box::new(FilledCircle {
-            pos: Point::<ScreenSpace>::new(rl.get_mouse_position()),
-            brush: Brush::<ScreenSpace> {
+            pos: mouse,
+            brush: Brush {
                 color: data.brush.color,
-                thickness: data.brush.thickness.transform(&data.camera),
+                thickness: data.brush.thickness.to_screen(&data.camera),
             },
         }));
 
@@ -240,7 +257,7 @@ impl StateHandler for Drawing {
             return Transition::Switch(Box::new(DrawingStraight));
         }
 
-        let pos = Point::<ScreenSpace>::new(rl.get_mouse_position()).transform(&data.camera);
+        let pos = mouse.to_canvas(&data.camera);
         let line = data
             .contents
             .lines
@@ -250,13 +267,10 @@ impl StateHandler for Drawing {
             data.contents
                 .lines
                 .push(Line::new(pos, data.brush, data.contents.z));
-        } else if f32::from(
-            line.points
-                .last()
-                .unwrap()
-                .distance_to(&pos)
-                .transform(&data.camera),
-        ) >= 5.0
+        } else if CanvasLength::new(line.points.last().unwrap().distance_to(pos))
+            .to_screen(&data.camera)
+            .0
+            >= 5.0
         {
             line.points.push(pos);
         }
@@ -267,7 +281,7 @@ impl StateHandler for Drawing {
 
 impl StateHandler for DrawingStraight {
     fn on_enter(&mut self, data: &mut SceneData, rl: &mut RaylibHandle) {
-        let pos = Point::<ScreenSpace>::new(rl.get_mouse_position()).transform(&data.camera);
+        let pos = mouse_pos(rl).to_canvas(&data.camera);
 
         data.contents
             .lines
@@ -275,7 +289,7 @@ impl StateHandler for DrawingStraight {
     }
 
     fn on_exit(&mut self, data: &mut SceneData, rl: &mut RaylibHandle) {
-        let pos = Point::<ScreenSpace>::new(rl.get_mouse_position()).transform(&data.camera);
+        let pos = mouse_pos(rl).to_canvas(&data.camera);
 
         let line =
             data.contents.lines.last_mut().expect(
@@ -305,14 +319,12 @@ impl StateHandler for DrawingStraight {
         }
 
         if let Some(line) = data.contents.lines.last() {
-            let pos = Point::<ScreenSpace>::new(rl.get_mouse_position());
-
             data.contents.overlay.push(Box::new(StraightLine {
-                start: line.points.last().unwrap().transform(&data.camera),
-                end: pos,
+                start: line.points.last().unwrap().to_screen(&data.camera),
+                end: mouse_pos(rl),
                 brush: Brush::<ScreenSpace> {
                     color: data.brush.color,
-                    thickness: data.brush.thickness.transform(&data.camera),
+                    thickness: data.brush.thickness.to_screen(&data.camera),
                 },
             }));
         }
@@ -337,8 +349,7 @@ impl StateHandler for MovingCanvas {
             return Transition::Switch(Box::new(Idle));
         }
 
-        data.camera
-            .update_pos(Vector::<ScreenSpace>::new(rl.get_mouse_delta()));
+        data.camera.update_pos(mouse_delta(rl));
 
         Transition::Stay
     }
@@ -349,9 +360,9 @@ impl StateHandler for Erasing {
         rl.show_cursor();
         rl.set_mouse_cursor(MouseCursor::MOUSE_CURSOR_ARROW);
 
-        let start = Point::<ScreenSpace>::new(rl.get_mouse_position()).transform(&data.camera);
+        let start = mouse_pos(rl).to_canvas(&data.camera);
         self.eraser = Some(FilledRect::new(
-            Rect::new(start, Length::new(0.0), Length::new(0.0)),
+            CanvasRect::new(start, CanvasSize::new(0.0, 0.0)),
             data.config.background,
         ));
     }
@@ -380,9 +391,11 @@ impl StateHandler for Erasing {
         }
 
         if let Some(eraser) = self.eraser.as_mut() {
-            let d = Vector::<ScreenSpace>::new(rl.get_mouse_delta()).transform(&data.camera);
-            *eraser.rect.w_mut() += d.x();
-            *eraser.rect.h_mut() += d.y();
+            let d = mouse_delta(rl).to_canvas(&data.camera);
+            eraser.rect = CanvasRect::new(
+                eraser.rect.origin,
+                CanvasSize::new(eraser.rect.size.width + d.x, eraser.rect.size.height + d.y),
+            );
 
             data.contents.overlay.push(Box::new(*eraser));
         }
@@ -416,8 +429,7 @@ impl StateHandler for ModifyingImage {
         _thread: &RaylibThread,
         rl: &mut RaylibHandle,
     ) -> Transition {
-        let image_under_cursor =
-            data.image_under_cursor(Point::new(rl.get_mouse_position())) != Some(self.0);
+        let image_under_cursor = data.image_under_cursor(mouse_pos(rl)) != Some(self.0);
         if rl.is_mouse_button_down(MouseButton::MOUSE_BUTTON_LEFT) {
             if image_under_cursor {
                 return Transition::Switch(Box::new(Idle));
@@ -467,7 +479,7 @@ impl ResizingImage {
     pub fn new(id: ImageId) -> Self {
         Self {
             id,
-            start_scale: Length::new(1.0),
+            start_scale: CanvasLength::new(1.0),
         }
     }
 }
@@ -510,12 +522,10 @@ impl StateHandler for ResizingImage {
             .contents
             .image(self.id)
             .expect("Image id should be correct when in resizing state");
-        let d = Point::<ScreenSpace>::new(rl.get_mouse_delta());
-        unsafe {
-            let sx: f32 = d.x().transform(&data.camera).v() / img.width().v();
-            let sy: f32 = d.y().transform(&data.camera).v() / img.height().v();
-            img.scale *= 1.0 + if sx.abs() > sy.abs() { sx } else { sy };
-        }
+        let d = mouse_delta(rl).to_canvas(&data.camera);
+        let dx = d.x / img.width().0;
+        let dy = d.y / img.height().0;
+        img.scale *= 1.0 + if dx.abs() > dy.abs() { dx } else { dy };
 
         Transition::Stay
     }
@@ -525,7 +535,7 @@ impl MovingImage {
     pub fn new(id: ImageId) -> Self {
         Self {
             id,
-            start_pos: Point::new(Vector2::default()),
+            start_pos: CanvasPoint::default(),
         }
     }
 }
@@ -545,7 +555,11 @@ impl StateHandler for MovingImage {
             .image(self.id)
             .expect("Image id should be correct when exiting moving state");
 
-        if f32::from(self.start_pos.distance_to(&img.pos).transform(&data.camera)) > 10.0 {
+        if CanvasLength::new(self.start_pos.distance_to(img.pos))
+            .to_screen(&data.camera)
+            .0
+            > 10.0
+        {
             data.command_invoker
                 .push(command::MoveImage::new(self.id, self.start_pos, img.pos));
         }
@@ -565,7 +579,7 @@ impl StateHandler for MovingImage {
             .contents
             .image(self.id)
             .expect("Image id should be correct when in moving state");
-        img.pos += Vector::<ScreenSpace>::new(rl.get_mouse_delta()).transform(&data.camera);
+        img.pos += mouse_delta(rl).to_canvas(&data.camera);
 
         Transition::Stay
     }

@@ -1,10 +1,9 @@
 use std::collections::VecDeque;
 use std::fmt::Debug;
 
-use crate::{
-    graphics::{Contents, Eraser, Image, ImageId, Line},
-    units::{CanvasSpace, Length, Point},
-};
+use widok::{CanvasLength, CanvasPoint};
+
+use crate::graphics::{Contents, Eraser, Image, ImageId, Line};
 
 #[derive(Debug)]
 pub struct CommandInvoker {
@@ -122,15 +121,15 @@ impl Command for RemoveImage {
 #[derive(Debug)]
 pub struct ResizeImage {
     id: ImageId,
-    start_scale: Length<CanvasSpace>,
-    end_scale: Length<CanvasSpace>,
+    start_scale: CanvasLength,
+    end_scale: CanvasLength,
 }
 
 impl ResizeImage {
     pub fn new(
         id: ImageId,
-        start_scale: Length<CanvasSpace>,
-        end_scale: Length<CanvasSpace>,
+        start_scale: CanvasLength,
+        end_scale: CanvasLength,
     ) -> Self {
         Self {
             id,
@@ -157,12 +156,12 @@ impl Command for ResizeImage {
 #[derive(Debug)]
 pub struct MoveImage {
     id: ImageId,
-    start_pos: Point<CanvasSpace>,
-    end_pos: Point<CanvasSpace>,
+    start_pos: CanvasPoint,
+    end_pos: CanvasPoint,
 }
 
 impl MoveImage {
-    pub fn new(id: ImageId, start_pos: Point<CanvasSpace>, end_pos: Point<CanvasSpace>) -> Self {
+    pub fn new(id: ImageId, start_pos: CanvasPoint, end_pos: CanvasPoint) -> Self {
         Self {
             id,
             start_pos,

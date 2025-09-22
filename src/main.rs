@@ -4,10 +4,8 @@ use crate::{config::Config, scene::Scene};
 use arboard::Clipboard;
 use std::{env, process};
 
-mod camera;
 mod command;
 mod config;
-mod units;
 mod graphics;
 mod input;
 mod scene;

@@ -5,15 +5,16 @@ use std::{
 
 use arboard::Clipboard;
 use raylib::{RaylibHandle, RaylibThread};
+use widok::{
+    Camera, CanvasLength, CanvasSize, CanvasSpace, CanvasToScreenScale, ScreenPoint, ToCanvas,
+};
 
 use crate::{
-    camera::Camera,
     command::CommandInvoker,
     config::Config,
     graphics::{Brush, Contents, Drawable, ImageId},
     input::InputHandler,
     state::{self, StateHandler, Transition},
-    units::{CanvasSpace, Length, Point, ScreenSpace, Transformable},
 };
 
 pub struct Scene {
@@ -60,13 +61,14 @@ impl SceneData {
         let config = Rc::new(config);
         let brush = Brush {
             color: config.colors[0],
-            thickness: Length::new(config.thickness),
+            thickness: CanvasLength::new(config.thickness),
         };
         let command_invoker = CommandInvoker::new(config.undo_buffer_size);
         let input_handler = InputHandler::new(Rc::clone(&config));
+        let camera = Camera::new(CanvasSize::new(0.0, 0.0));
 
         Self {
-            camera: Camera::default(),
+            camera,
             config,
             color_idx: 0,
             brush,
@@ -78,23 +80,22 @@ impl SceneData {
     }
 
     pub fn update_thickness(&mut self, scroll_y: f32) {
-        unsafe {
-            *self.brush.thickness.v_mut() = self
-                .brush
-                .thickness
-                .v()
-                .add(scroll_y.signum())
-                .clamp(1.0, 30.0);
-        }
+        self.brush.thickness = self
+            .brush
+            .thickness
+            .add(CanvasLength::new(scroll_y.signum()))
+            .min(CanvasLength::new(30.0))
+            .max(CanvasLength::new(1.0));
     }
 
     pub fn update_zoom(&mut self, scroll_y: f32) {
         let new_zoom = self
             .camera
-            .zoom
-            .mul(1.0 + scroll_y.signum() * 0.3 * self.config.scroll_sensitivity)
-            .clamp(0.1, 15.0);
-        self.camera.update_zoom(new_zoom);
+            .zoom()
+            .0
+            .mul(1.0 + scroll_y.signum() * 0.2 * self.config.scroll_sensitivity)
+            .clamp(0.1, 30.0);
+        self.camera.update_zoom(CanvasToScreenScale::new(new_zoom));
     }
 
     pub fn update_color(&mut self, forward: bool) {
@@ -104,11 +105,11 @@ impl SceneData {
         self.brush.color = self.config.colors[self.color_idx];
     }
 
-    pub fn image_under_cursor(&self, mouse: Point<ScreenSpace>) -> Option<ImageId> {
+    pub fn image_under_cursor(&self, mouse: ScreenPoint) -> Option<ImageId> {
         self.contents
             .images
             .iter()
-            .filter(|i| i.in_bounds(mouse.transform(&self.camera)))
+            .filter(|i| i.in_bounds(mouse.to_canvas(&self.camera)))
             .max_by_key(|i| i.z())
             .map(|i| i.id)
     }

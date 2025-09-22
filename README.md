@@ -16,10 +16,10 @@ A minimal infinite canvas drawing app.
 | `Ctrl+Y`      | redo |
 | `Ctrl+V`      | paste an image from clipboard |
 | `Ctrl+LMB`    | select an image |
-| `D`           | remove selected images |
-| `LMB`         | drag to move an image |
-| `RMB`         | drag to resize an image |
-| `Up/Down`     | move an image up/down a layer |
+| `D`           | remove selected image |
+| `LMB`         | drag to move selected image |
+| `RMB`         | drag to resize selected image |
+| `Up/Down`     | move selected image up/down a layer |
 
 ## Configuration
 

@@ -6,12 +6,12 @@ use raylib::{
     prelude::{RaylibDraw, RaylibDrawHandle},
     texture::Texture2D,
 };
-
-use crate::{
-    camera::Camera,
-    config::Config,
-    units::{CanvasSpace, Length, Point, Rect, ScreenSpace, Transformable},
+use widok::{
+    Bounds, Camera, CanvasBox, CanvasPoint, CanvasRect, CanvasSpace, CanvasVector, InView, Length,
+    Rect, ScreenPoint, ScreenSize, ScreenSpace, ToScreen,
 };
+
+use crate::config::Config;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ImageId(usize);
@@ -72,16 +72,44 @@ pub struct Brush<Space> {
     pub thickness: Length<Space>,
 }
 
-pub trait Drawable {
+pub trait Drawable: InView {
     fn z(&self) -> usize;
     fn draw(&self, d: &mut RaylibDrawHandle, camera: &Camera);
-    fn is_visible(&self, camera: &Camera) -> bool;
 }
 
 #[derive(Debug, Clone, Copy)]
 pub struct FilledCircle {
-    pub pos: Point<ScreenSpace>,
+    pub pos: ScreenPoint,
     pub brush: Brush<ScreenSpace>,
+}
+
+impl InView for FilledCircle {
+    fn is_in_view(&self, _camera: &Camera) -> bool {
+        // always visible since it's in ScreenSpace
+        true
+    }
+}
+
+trait ToVector2 {
+    fn to_vec2(self) -> raylib::ffi::Vector2;
+}
+
+impl ToVector2 for ScreenPoint {
+    fn to_vec2(self) -> raylib::ffi::Vector2 {
+        raylib::ffi::Vector2 {
+            x: self.x,
+            y: self.y,
+        }
+    }
+}
+
+impl ToVector2 for ScreenSize {
+    fn to_vec2(self) -> raylib::ffi::Vector2 {
+        raylib::ffi::Vector2 {
+            x: self.width,
+            y: self.height,
+        }
+    }
 }
 
 impl Drawable for FilledCircle {
@@ -90,26 +118,44 @@ impl Drawable for FilledCircle {
     }
 
     fn draw(&self, d: &mut RaylibDrawHandle, _: &Camera) {
-        let r = f32::from(self.brush.thickness / 2.0).max(1.0);
+        let r = self.brush.thickness / 2.0;
+        let r = r.0.max(1.0);
 
-        d.draw_circle_v(self.pos, r, self.brush.color);
-    }
-
-    fn is_visible(&self, _camera: &Camera) -> bool {
-        // always visible since it's in ScreenSpace
-        true
+        d.draw_circle_v(self.pos.to_vec2(), r, self.brush.color);
     }
 }
 
 #[derive(Debug, Clone, Copy)]
 pub struct FilledRect {
-    pub rect: Rect<CanvasSpace>,
+    pub rect: CanvasRect,
     pub color: Color,
 }
 
 impl FilledRect {
     pub fn new(rect: Rect<CanvasSpace>, color: Color) -> Self {
         Self { rect, color }
+    }
+
+    fn normalized_rect(&self) -> CanvasRect {
+        let mut origin = self.rect.origin;
+        let mut size = self.rect.size;
+
+        if size.width < 0.0 {
+            origin.x += size.width;
+            size.width = -size.width;
+        }
+        if size.height < 0.0 {
+            origin.y += size.height;
+            size.height = -size.height;
+        }
+
+        CanvasRect::new(origin, size)
+    }
+}
+
+impl Bounds for FilledRect {
+    fn bounds(&self) -> CanvasBox {
+        self.rect.to_box2d()
     }
 }
 
@@ -119,20 +165,23 @@ impl Drawable for FilledRect {
     }
 
     fn draw(&self, d: &mut RaylibDrawHandle, camera: &Camera) {
-        let rect = self.rect.normalized().transform(camera);
-        d.draw_rectangle_v(rect.pos(), rect.size(), self.color);
-    }
-
-    fn is_visible(&self, camera: &Camera) -> bool {
-        camera.get_rect().check_collision(self.rect)
+        let rect = self.normalized_rect().to_screen(camera);
+        d.draw_rectangle_v(rect.min().to_vec2(), rect.size.to_vec2(), self.color);
     }
 }
 
 #[derive(Debug)]
 pub struct StraightLine {
-    pub start: Point<ScreenSpace>,
-    pub end: Point<ScreenSpace>,
+    pub start: ScreenPoint,
+    pub end: ScreenPoint,
     pub brush: Brush<ScreenSpace>,
+}
+
+impl InView for StraightLine {
+    fn is_in_view(&self, _camera: &Camera) -> bool {
+        // always visible since it's in ScreenSpace
+        true
+    }
 }
 
 impl Drawable for StraightLine {
@@ -142,29 +191,24 @@ impl Drawable for StraightLine {
 
     fn draw(&self, d: &mut RaylibDrawHandle, _camera: &Camera) {
         d.draw_line_ex(
-            self.start,
-            self.end,
-            self.brush.thickness.into(),
+            self.start.to_vec2(),
+            self.end.to_vec2(),
+            self.brush.thickness.0,
             self.brush.color,
         );
-    }
-
-    fn is_visible(&self, _camera: &Camera) -> bool {
-        // always visible since it's in ScreenSpace
-        true
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct Line {
-    pub points: Vec<Point<CanvasSpace>>,
+    pub points: Vec<CanvasPoint>,
     pub finished: bool,
     pub brush: Brush<CanvasSpace>,
     z: usize,
 }
 
 impl Line {
-    pub fn new(start: Point<CanvasSpace>, brush: Brush<CanvasSpace>, z: usize) -> Self {
+    pub fn new(start: CanvasPoint, brush: Brush<CanvasSpace>, z: usize) -> Self {
         Self {
             points: vec![start],
             finished: false,
@@ -176,28 +220,29 @@ impl Line {
     fn draw_longer(&self, d: &mut RaylibDrawHandle, camera: &Camera) {
         assert!(self.points.len() >= 4);
 
-        let pts = std::iter::once(&(self.points[0] * 2.0 - self.points[1]))
+        let first = (self.points[0] * 2.0 - self.points[1]).to_point();
+        let pts = std::iter::once(&first)
             .chain(self.points.iter())
-            .map(|p| Vector2::from(p.transform(camera)))
+            .map(|p| Vector2::from(p.to_screen(camera).to_vec2()))
             .collect::<Box<_>>();
         d.draw_spline_catmull_rom(
             &pts,
-            self.brush.thickness.transform(camera).into(),
+            self.brush.thickness.to_screen(camera).0,
             self.brush.color,
         );
     }
 
     fn draw_shorter(&self, d: &mut RaylibDrawHandle, camera: &Camera) {
-        let r = f32::from(self.brush.thickness.transform(camera)) / 2.0;
+        let r = self.brush.thickness.to_screen(camera) / 2.0;
         for seg in self.points.windows(2) {
-            let p0 = seg[0].transform(camera);
-            let p1 = seg[1].transform(camera);
-            d.draw_circle_v(p0, r, self.brush.color);
-            d.draw_circle_v(p1, r, self.brush.color);
+            let p0 = seg[0].to_screen(camera);
+            let p1 = seg[1].to_screen(camera);
+            d.draw_circle_v(p0.to_vec2(), r.0, self.brush.color);
+            d.draw_circle_v(p1.to_vec2(), r.0, self.brush.color);
             d.draw_line_ex(
-                p0,
-                p1,
-                self.brush.thickness.transform(camera).into(),
+                p0.to_vec2(),
+                p1.to_vec2(),
+                self.brush.thickness.to_screen(camera).0,
                 self.brush.color,
             );
         }
@@ -206,10 +251,52 @@ impl Line {
     fn draw_single(&self, d: &mut RaylibDrawHandle, camera: &Camera) {
         assert!(self.points.len() == 1);
 
-        let p = self.points[0].transform(camera);
-        let r = self.brush.thickness.transform(camera) / 2.0;
+        let p = self.points[0].to_screen(camera);
+        let r = self.brush.thickness.to_screen(camera) / 2.0;
 
-        d.draw_circle_v(p, r.into(), self.brush.color);
+        d.draw_circle_v(p.to_vec2(), r.0, self.brush.color);
+    }
+}
+
+impl Bounds for Line {
+    fn bounds(&self) -> CanvasBox {
+        debug_assert!(!self.points.is_empty());
+
+        let r = self.brush.thickness.0;
+
+        let min_x = self
+            .points
+            .iter()
+            .map(|a| a.x)
+            .min_by(f32::total_cmp)
+            .unwrap()
+            - r;
+        let min_y = self
+            .points
+            .iter()
+            .map(|a| a.y)
+            .min_by(f32::total_cmp)
+            .unwrap()
+            - r;
+        let max_x = self
+            .points
+            .iter()
+            .map(|a| a.x)
+            .max_by(f32::total_cmp)
+            .unwrap()
+            + r;
+        let max_y = self
+            .points
+            .iter()
+            .map(|a| a.y)
+            .max_by(f32::total_cmp)
+            .unwrap()
+            + r;
+
+        CanvasBox::new(
+            CanvasPoint::new(min_x, min_y),
+            CanvasPoint::new(max_x, max_y),
+        )
     }
 }
 
@@ -226,24 +313,11 @@ impl Drawable for Line {
             4.. => self.draw_longer(d, camera),
         }
     }
-
-    fn is_visible(&self, camera: &Camera) -> bool {
-        if self.points.len() == 1 {
-            return camera.get_rect().check_collision_point(self.points[0]);
-        }
-
-        for seg in self.points.windows(2) {
-            if camera.get_rect().check_collision_line(seg[0], seg[1]) {
-                return true;
-            }
-        }
-        false
-    }
 }
 
 #[derive(Debug, Clone)]
 pub struct Image {
-    pub pos: Point<CanvasSpace>,
+    pub pos: CanvasPoint,
     pub texture: Rc<Texture2D>,
     pub is_selected: bool,
     pub scale: Length<CanvasSpace>,
@@ -254,7 +328,7 @@ pub struct Image {
 
 impl Image {
     pub fn new(
-        pos: Point<CanvasSpace>,
+        pos: CanvasPoint,
         texture: Texture2D,
         scale: Length<CanvasSpace>,
         id: ImageId,
@@ -280,12 +354,17 @@ impl Image {
         self.scale * self.texture.height as f32
     }
 
-    fn get_rect(&self) -> Rect<CanvasSpace> {
-        Rect::new(self.pos, self.width(), self.height())
+    pub fn in_bounds(&self, point: CanvasPoint) -> bool {
+        self.bounds().contains(point)
     }
+}
 
-    pub fn in_bounds(&self, point: Point<CanvasSpace>) -> bool {
-        self.get_rect().check_collision_point(point)
+impl Bounds for Image {
+    fn bounds(&self) -> CanvasBox {
+        CanvasBox::new(
+            self.pos,
+            self.pos + CanvasVector::new(self.width().0, self.height().0),
+        )
     }
 }
 
@@ -295,33 +374,25 @@ impl Drawable for Image {
     }
 
     fn draw(&self, d: &mut RaylibDrawHandle, camera: &Camera) {
-        let draw_pos: Vector2 = self.pos.transform(camera).into();
-        let draw_size = Vector2::new(
-            self.width().transform(camera).into(),
-            self.height().transform(camera).into(),
-        );
+        let rect = self.bounds().to_screen(camera).to_rect();
 
         d.draw_texture_ex(
             &*self.texture,
-            draw_pos,
+            rect.min().to_vec2(),
             0.0,
-            self.scale.transform(camera).into(),
+            self.scale.to_screen(camera).0,
             Color::WHITE,
         );
 
         if self.is_selected {
             d.draw_rectangle_lines(
-                draw_pos.x as i32,
-                draw_pos.y as i32,
-                draw_size.x as i32,
-                draw_size.y as i32,
+                rect.min().x as i32,
+                rect.min().y as i32,
+                rect.size.width as i32,
+                rect.size.height as i32,
                 self.border_color,
             );
         }
-    }
-
-    fn is_visible(&self, camera: &Camera) -> bool {
-        camera.get_rect().check_collision(self.get_rect())
     }
 }
 
@@ -340,6 +411,12 @@ impl Eraser {
     }
 }
 
+impl Bounds for Eraser {
+    fn bounds(&self) -> CanvasBox {
+        self.rect.bounds()
+    }
+}
+
 impl Drawable for Eraser {
     fn z(&self) -> usize {
         self.z
@@ -347,9 +424,5 @@ impl Drawable for Eraser {
 
     fn draw(&self, d: &mut RaylibDrawHandle, camera: &Camera) {
         self.rect.draw(d, camera);
-    }
-
-    fn is_visible(&self, camera: &Camera) -> bool {
-        self.rect.is_visible(camera)
     }
 }
