@@ -90,12 +90,12 @@ impl InView for FilledCircle {
     }
 }
 
-trait ToVector2 {
-    fn to_vec2(self) -> raylib::ffi::Vector2;
+trait IntoVector2 {
+    fn into_vec2(self) -> raylib::ffi::Vector2;
 }
 
-impl ToVector2 for ScreenPoint {
-    fn to_vec2(self) -> raylib::ffi::Vector2 {
+impl IntoVector2 for ScreenPoint {
+    fn into_vec2(self) -> raylib::ffi::Vector2 {
         raylib::ffi::Vector2 {
             x: self.x,
             y: self.y,
@@ -103,8 +103,8 @@ impl ToVector2 for ScreenPoint {
     }
 }
 
-impl ToVector2 for ScreenSize {
-    fn to_vec2(self) -> raylib::ffi::Vector2 {
+impl IntoVector2 for ScreenSize {
+    fn into_vec2(self) -> raylib::ffi::Vector2 {
         raylib::ffi::Vector2 {
             x: self.width,
             y: self.height,
@@ -121,7 +121,7 @@ impl Drawable for FilledCircle {
         let r = self.brush.thickness / 2.0;
         let r = r.0.max(1.0);
 
-        d.draw_circle_v(self.pos.to_vec2(), r, self.brush.color);
+        d.draw_circle_v(self.pos.into_vec2(), r, self.brush.color);
     }
 }
 
@@ -166,7 +166,7 @@ impl Drawable for FilledRect {
 
     fn draw(&self, d: &mut RaylibDrawHandle, camera: &Camera) {
         let rect = self.normalized_rect().to_screen(camera);
-        d.draw_rectangle_v(rect.min().to_vec2(), rect.size.to_vec2(), self.color);
+        d.draw_rectangle_v(rect.min().into_vec2(), rect.size.into_vec2(), self.color);
     }
 }
 
@@ -191,8 +191,8 @@ impl Drawable for StraightLine {
 
     fn draw(&self, d: &mut RaylibDrawHandle, _camera: &Camera) {
         d.draw_line_ex(
-            self.start.to_vec2(),
-            self.end.to_vec2(),
+            self.start.into_vec2(),
+            self.end.into_vec2(),
             self.brush.thickness.0,
             self.brush.color,
         );
@@ -223,7 +223,7 @@ impl Line {
         let first = (self.points[0] * 2.0 - self.points[1]).to_point();
         let pts = std::iter::once(&first)
             .chain(self.points.iter())
-            .map(|p| Vector2::from(p.to_screen(camera).to_vec2()))
+            .map(|p| Vector2::from(p.to_screen(camera).into_vec2()))
             .collect::<Box<_>>();
         d.draw_spline_catmull_rom(
             &pts,
@@ -237,11 +237,11 @@ impl Line {
         for seg in self.points.windows(2) {
             let p0 = seg[0].to_screen(camera);
             let p1 = seg[1].to_screen(camera);
-            d.draw_circle_v(p0.to_vec2(), r.0, self.brush.color);
-            d.draw_circle_v(p1.to_vec2(), r.0, self.brush.color);
+            d.draw_circle_v(p0.into_vec2(), r.0, self.brush.color);
+            d.draw_circle_v(p1.into_vec2(), r.0, self.brush.color);
             d.draw_line_ex(
-                p0.to_vec2(),
-                p1.to_vec2(),
+                p0.into_vec2(),
+                p1.into_vec2(),
                 self.brush.thickness.to_screen(camera).0,
                 self.brush.color,
             );
@@ -254,7 +254,7 @@ impl Line {
         let p = self.points[0].to_screen(camera);
         let r = self.brush.thickness.to_screen(camera) / 2.0;
 
-        d.draw_circle_v(p.to_vec2(), r.0, self.brush.color);
+        d.draw_circle_v(p.into_vec2(), r.0, self.brush.color);
     }
 }
 
@@ -378,7 +378,7 @@ impl Drawable for Image {
 
         d.draw_texture_ex(
             &*self.texture,
-            rect.min().to_vec2(),
+            rect.min().into_vec2(),
             0.0,
             self.scale.to_screen(camera).0,
             Color::WHITE,
