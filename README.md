@@ -2,6 +2,11 @@
 
 A minimal infinite canvas drawing app.
 
+Check out the [latest release] and the [browser version] (raylib, webassembly).
+
+[latest release]: https://github.com/FreePlacki/kajet/releases/latest
+[browser version]: https://freeplacki.github.io/kajet
+
 ## Usage
 
 | Keybind | Action |
