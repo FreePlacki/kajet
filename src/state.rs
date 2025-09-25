@@ -1,4 +1,3 @@
-use arboard::ImageData;
 use raylib::ffi;
 use raylib::{
     RaylibHandle, RaylibThread,
@@ -13,6 +12,7 @@ use widok::{
     ScreenVector, ToCanvas, ToScreen,
 };
 
+use crate::clipboard::ImageData;
 use crate::graphics::{Brush, FilledCircle, StraightLine};
 use crate::{
     command::{self, AddEraser, DrawLine},
@@ -21,6 +21,18 @@ use crate::{
     scene::SceneData,
 };
 
+#[cfg(target_arch = "wasm32")]
+fn mouse_pos(rl: &RaylibHandle) -> ScreenPoint {
+    use crate::{HEIGHT, WIDTH};
+
+    let mouse = rl.get_mouse_position();
+    let initial = Vector2::new(WIDTH as f32, HEIGHT as f32);
+    let window = Vector2::new(rl.get_screen_width() as f32, rl.get_screen_height() as f32);
+    let mouse = mouse * window / initial;
+    ScreenPoint::new(mouse.x, mouse.y)
+}
+
+#[cfg(not(target_arch = "wasm32"))]
 fn mouse_pos(rl: &RaylibHandle) -> ScreenPoint {
     let Vector2 { x, y } = rl.get_mouse_position();
     ScreenPoint::new(x, y)
@@ -98,7 +110,8 @@ pub enum Transition {
 }
 
 impl Idle {
-    fn image_from_arboard(data: &arboard::ImageData) -> texture::Image {
+    #[cfg(not(target_arch = "wasm32"))]
+    fn image_from_arboard(data: &ImageData) -> texture::Image {
         let mut rl_image = ffi::Image {
             data: data.bytes.as_ptr() as *mut c_void,
             width: data.width as i32,
@@ -116,6 +129,7 @@ impl Idle {
         unsafe { texture::Image::from_raw(rl_image) }
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     fn try_paste_image(
         &self,
         data: &mut SceneData,
@@ -153,7 +167,9 @@ impl Idle {
 
 impl StateHandler for Idle {
     fn on_enter(&mut self, _data: &mut SceneData, rl: &mut RaylibHandle) {
+        #[cfg(not(target_arch = "wasm32"))]
         rl.hide_cursor();
+        rl.set_mouse_cursor(MouseCursor::MOUSE_CURSOR_DEFAULT);
     }
 
     fn step(
@@ -203,11 +219,13 @@ impl StateHandler for Idle {
             Action::Redo => data.command_invoker.redo(&mut data.contents),
             Action::NextColor => data.update_color(true),
             Action::PrevColor => data.update_color(false),
-            Action::Paste => {
-                if let Some(ref mut clipboard) = data.clipboard
-                    && let Ok(image_data) = clipboard.get_image()
-                {
-                    self.try_paste_image(data, thread, rl, image_data);
+            Action::Paste =>
+            {
+                #[cfg(not(target_arch = "wasm32"))]
+                if let Some(ref mut clipboard) = data.clipboard {
+                    if let Ok(image_data) = clipboard.get_image() {
+                        self.try_paste_image(data, thread, rl, image_data);
+                    }
                 }
             }
             _ => {}
@@ -219,7 +237,10 @@ impl StateHandler for Idle {
 
 impl StateHandler for Drawing {
     fn on_enter(&mut self, data: &mut SceneData, rl: &mut RaylibHandle) {
+        #[cfg(not(target_arch = "wasm32"))]
         rl.hide_cursor();
+        rl.set_mouse_cursor(MouseCursor::MOUSE_CURSOR_DEFAULT);
+
         let pos = mouse_pos(rl).to_canvas(&data.camera);
         data.contents
             .lines

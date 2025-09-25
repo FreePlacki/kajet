@@ -1,9 +1,9 @@
 #![windows_subsystem = "windows"]
 
-use crate::{config::Config, scene::Scene};
-use arboard::Clipboard;
+use crate::{clipboard::Clipboard, config::Config, scene::Scene};
 use std::{env, process};
 
+mod clipboard;
 mod command;
 mod config;
 mod graphics;
@@ -41,13 +41,7 @@ fn main() {
         }
     };
 
-    let clipboard = match Clipboard::new() {
-        Ok(c) => Some(c),
-        Err(_) => {
-            eprintln!("[ERROR] Couldn't initialize clipboard");
-            None
-        }
-    };
+    let clipboard = Clipboard::new();
 
     let (mut rl, thread) = raylib::init()
         .size(WIDTH as i32, HEIGHT as i32)
@@ -58,6 +52,7 @@ fn main() {
         .build();
 
     rl.set_target_fps(config.fps);
+    #[cfg(not(target_arch = "wasm32"))]
     rl.hide_cursor();
 
     let mut scene = Scene::new(config, clipboard, &mut rl);

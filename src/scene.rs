@@ -3,13 +3,13 @@ use std::{
     rc::Rc,
 };
 
-use arboard::Clipboard;
-use raylib::{RaylibHandle, RaylibThread};
+use raylib::{RaylibHandle, RaylibThread, camera};
 use widok::{
     Camera, CanvasLength, CanvasSize, CanvasSpace, CanvasToScreenScale, ScreenPoint, ToCanvas,
 };
 
 use crate::{
+    clipboard::Clipboard,
     command::CommandInvoker,
     config::Config,
     graphics::{Brush, Contents, Drawable, ImageId},
